@@ -34,6 +34,11 @@ line(`  validity_score: ${inv.validity_score}  is_noise: ${inv.is_noise}`);
 assert(inv.is_noise === false, "expected a real incident (is_noise=false) in the failing state");
 assert(/OOMKill/i.test(inv.root_cause), "expected OOMKill root cause in the failing state");
 
+// 2b) Runbook guidance for the symptom.
+const rb = JSON.parse((await call("get_runbook", { symptom: "OOMKilled" })).text);
+line(`get_runbook(OOMKilled): ${rb.runbook[0]?.rule?.slice(0, 70)}...`);
+assert(rb.runbook.length > 0 && /bump_memory/i.test(rb.runbook[0].rule), "expected OOMKilled runbook rule");
+
 // 3) The real fix (bump memory) → verify the loop closes.
 line(`\nbump_memory(checkout, 512):`);
 line(`  ${(await call("bump_memory", { target: "checkout", mib: 512 })).text}`);

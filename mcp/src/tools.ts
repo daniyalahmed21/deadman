@@ -18,6 +18,7 @@ import { classifyTool } from "./classifier.js";
 import { guardDestructive } from "./guard.js";
 import * as audit from "./audit.js";
 import { backend } from "./backend.js";
+import { runbookFor } from "./runbook.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -179,6 +180,18 @@ export function registerDeadmanTools(server: McpServer): void {
       const health = backend.serviceHealth(target);
       return json({ ...health, resolved: health.healthy });
     },
+  );
+
+  server.registerTool(
+    "get_runbook",
+    {
+      title: "Get runbook",
+      description:
+        "Return authoritative SRE decision rules for choosing a remediation, optionally filtered by symptom (e.g. 'OOMKilled'). Consult this before acting.",
+      inputSchema: { symptom: z.string().optional().describe("Symptom to look up (e.g. OOMKilled); omit for all") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ symptom }) => json({ runbook: runbookFor(symptom) }),
   );
 
   server.registerTool(
