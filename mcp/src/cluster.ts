@@ -56,6 +56,11 @@ export function getDeployment(name: string): DeploymentState | undefined {
   return state.deployments[name];
 }
 
+/** True if the named PVC currently exists (for audit before/after). */
+export function pvcExists(name: string): boolean {
+  return state.pvcs[name] !== undefined;
+}
+
 export function snapshotHealth(deployment: string): {
   deployment: string;
   healthy: boolean;

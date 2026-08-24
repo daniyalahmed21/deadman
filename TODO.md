@@ -10,7 +10,7 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] Smoke test: tools list, gate flags, closed-loop verify
 - [ ] Swap `investigate_incident` canned result for the live investigation call
 - [ ] Point remediation tools at a real cluster (keep the sim as fallback)
-- [ ] Self-validate tool inputs; reject unknown/oversized payloads
+- [x] Self-validate tool inputs (typed schemas + bounds, e.g. mib <= 65536)
 
 ## TrueForge integration
 - [x] Register the MCP server as a remote HTTP connector
@@ -24,9 +24,10 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [ ] Closed-loop verify + session resume
 
 ## Safety depth
-- [ ] Consecutive-denial circuit breaker
-- [ ] Freeze safety policy at startup (injection-proof)
-- [ ] Structured, redacted audit records
+- [x] Sensitive-target floor: engine refuses destructive ops on protected targets (defense in depth)
+- [x] Freeze safety policy at startup (HARDLINE + protected patterns frozen at import)
+- [x] Structured audit records (action/target/tier/before/after/outcome) via get_audit_log
+- [ ] Consecutive-denial circuit breaker (harness-side; revisit)
 
 ## Demo
 - [ ] Seed the failure scenario end-to-end

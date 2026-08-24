@@ -22,21 +22,35 @@ for (const t of tools) {
 
 const call = async (name, args = {}) => {
   const r = await client.callTool({ name, arguments: args });
-  return r.content?.[0]?.text ?? "";
+  return { text: r.content?.[0]?.text ?? "", isError: r.isError === true };
 };
+const assert = (cond, msg) => { if (!cond) { console.error(`❌ ${msg}`); process.exit(1); } };
 
 // 2) Investigate → should return a root-cause report.
 line(`\ninvestigate_incident:`);
-const inv = JSON.parse(await call("investigate_incident", { alert: "checkout OOMKilled" }));
+const inv = JSON.parse((await call("investigate_incident", { alert: "checkout OOMKilled" })).text);
 line(`  root_cause: ${inv.root_cause}`);
 line(`  validity_score: ${inv.validity_score}  is_noise: ${inv.is_noise}`);
 
 // 3) The real fix (bump memory) → verify the loop closes.
 line(`\nbump_memory(checkout, 512):`);
-line(`  ${await call("bump_memory", { target: "checkout", mib: 512 })}`);
-line(`verify_resolution(checkout):`);
-const v = JSON.parse(await call("verify_resolution", { target: "checkout" }));
-line(`  healthy: ${v.healthy}  resolved: ${v.resolved}`);
+line(`  ${(await call("bump_memory", { target: "checkout", mib: 512 })).text}`);
+const v = JSON.parse((await call("verify_resolution", { target: "checkout" })).text);
+line(`verify_resolution → healthy: ${v.healthy}  resolved: ${v.resolved}`);
+assert(v.resolved === true, "expected incident resolved after bump_memory");
+
+// 4) Sensitive-target floor: a destructive op on a protected target must be REFUSED.
+line(`\ndelete_pvc(orders-db-pvc) [protected]:`);
+const refused = await call("delete_pvc", { target: "orders-db-pvc" });
+line(`  ${refused.text}`);
+assert(refused.isError === true, "expected delete_pvc on a protected target to be refused");
+
+// 5) Audit trail: every mutating call (executed or refused) is recorded.
+const auditLog = JSON.parse((await call("get_audit_log")).text);
+line(`\naudit trail (${auditLog.entries.length} entries):`);
+for (const e of auditLog.entries) line(`  #${e.seq} ${e.action} ${e.target} [${e.tier}] ${e.isError ? "REFUSED" : "OK"}`);
+assert(auditLog.entries.some((e) => e.action === "bump_memory" && !e.isError), "audit missing bump_memory OK");
+assert(auditLog.entries.some((e) => e.action === "delete_pvc" && e.isError), "audit missing refused delete_pvc");
 
 await client.close();
 line(`\n✅ smoke test passed`);

@@ -15,9 +15,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { CANNED_INVESTIGATION, serviceHealthFixture } from "./fixtures.js";
 import { classifyTool } from "./classifier.js";
+import { guardDestructive } from "./guard.js";
+import * as audit from "./audit.js";
 import {
   bumpMemory,
   deletePvc,
+  getDeployment,
+  pvcExists,
   restartPods,
   rollbackDeploy,
   scaleToZero,
@@ -32,6 +36,33 @@ function json(value: unknown) {
 /** Wrap a plain string as an MCP text result. */
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
+}
+
+/** An error result the model sees as a failed tool call (used for refusals). */
+function err(s: string) {
+  return { content: [{ type: "text" as const, text: s }], isError: true as const };
+}
+
+/**
+ * Run a destructive mutation through the sensitive-target floor, then audit it.
+ * A refused call never mutates; both outcomes are recorded.
+ */
+function guardedMutation(
+  tool: string,
+  target: string,
+  before: unknown,
+  mutate: () => string,
+  after: () => unknown,
+) {
+  const tier = classifyTool(tool);
+  const verdict = guardDestructive(tool, target);
+  if (!verdict.allowed) {
+    audit.record({ action: tool, target, tier, before, outcome: verdict.reason!, isError: true });
+    return err(`[REFUSED] ${verdict.reason}`);
+  }
+  const outcome = mutate();
+  audit.record({ action: tool, target, tier, before, after: after(), outcome, isError: false });
+  return text(`[${tier}] ${outcome}`);
 }
 
 export function registerDeadmanTools(server: McpServer): void {
@@ -157,6 +188,18 @@ export function registerDeadmanTools(server: McpServer): void {
     },
   );
 
+  server.registerTool(
+    "get_audit_log",
+    {
+      title: "Get audit log",
+      description:
+        "Return the append-only audit trail of every mutating action (executed or refused): action, target, tier, before/after, outcome.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    async () => json({ entries: audit.all() }),
+  );
+
   // ---- WRITE / SAFE (auto-run, but a visible call) -----------------------------------
 
   server.registerTool(
@@ -168,10 +211,15 @@ export function registerDeadmanTools(server: McpServer): void {
       // No destructiveHint → SAFE, not gated. Still individually visible to the harness.
       annotations: { readOnlyHint: false },
     },
-    async ({ target }) => text(`[${classifyTool("restart_pod")}] ${restartPods(target)}`),
+    async ({ target }) => {
+      // SAFE (reversible, low-risk): no gate, but still audited.
+      const outcome = restartPods(target);
+      audit.record({ action: "restart_pod", target, tier: "SAFE", outcome, isError: false });
+      return text(`[SAFE] ${outcome}`);
+    },
   );
 
-  // ---- WRITE / GATED (destructiveHint → TrueForge pauses for Allow/Deny) --------------
+  // ---- WRITE / GATED (destructiveHint → TrueForge pauses; engine floor is the 2nd layer) ---
 
   server.registerTool(
     "bump_memory",
@@ -181,11 +229,18 @@ export function registerDeadmanTools(server: McpServer): void {
         "Raise a deployment's container memory limit (Mi) and restart. Reversible prod config change — GATED.",
       inputSchema: {
         target: z.string().describe("Deployment name"),
-        mib: z.number().int().positive().describe("New memory limit in MiB"),
+        mib: z.number().int().positive().max(65536).describe("New memory limit in MiB (<= 65536)"),
       },
       annotations: { destructiveHint: true },
     },
-    async ({ target, mib }) => text(`[${classifyTool("bump_memory")}] ${bumpMemory(target, mib)}`),
+    async ({ target, mib }) =>
+      guardedMutation(
+        "bump_memory",
+        target,
+        getDeployment(target)?.memLimitMib,
+        () => bumpMemory(target, mib),
+        () => getDeployment(target)?.memLimitMib,
+      ),
   );
 
   server.registerTool(
@@ -196,7 +251,8 @@ export function registerDeadmanTools(server: McpServer): void {
       inputSchema: { target: z.string().describe("Deployment name") },
       annotations: { destructiveHint: true },
     },
-    async ({ target }) => text(`[${classifyTool("rollback_deploy")}] ${rollbackDeploy(target)}`),
+    async ({ target }) =>
+      guardedMutation("rollback_deploy", target, undefined, () => rollbackDeploy(target), () => undefined),
   );
 
   server.registerTool(
@@ -208,7 +264,14 @@ export function registerDeadmanTools(server: McpServer): void {
       inputSchema: { target: z.string().describe("PVC name") },
       annotations: { destructiveHint: true },
     },
-    async ({ target }) => text(`[${classifyTool("delete_pvc")}] ${deletePvc(target)}`),
+    async ({ target }) =>
+      guardedMutation(
+        "delete_pvc",
+        target,
+        { exists: pvcExists(target) },
+        () => deletePvc(target),
+        () => ({ exists: pvcExists(target) }),
+      ),
   );
 
   server.registerTool(
@@ -219,6 +282,13 @@ export function registerDeadmanTools(server: McpServer): void {
       inputSchema: { target: z.string().describe("Deployment name") },
       annotations: { destructiveHint: true },
     },
-    async ({ target }) => text(`[${classifyTool("scale_to_zero")}] ${scaleToZero(target)}`),
+    async ({ target }) =>
+      guardedMutation(
+        "scale_to_zero",
+        target,
+        getDeployment(target)?.replicas,
+        () => scaleToZero(target),
+        () => getDeployment(target)?.replicas,
+      ),
   );
 }
