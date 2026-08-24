@@ -7,6 +7,7 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] Full tool surface with read/write gate annotations
 - [x] Blast-radius classifier (SAFE / GATED / HARDLINE, fail-closed)
 - [x] Deterministic in-memory cluster (closed-loop `verify_resolution`)
+- [x] Smoke test: tools list, gate flags, closed-loop verify
 - [ ] Swap `investigate_incident` canned result for the live investigation call
 - [ ] Point remediation tools at a real cluster (keep the sim as fallback)
 - [ ] Self-validate tool inputs; reject unknown/oversized payloads
