@@ -13,8 +13,9 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [ ] Self-validate tool inputs; reject unknown/oversized payloads
 
 ## TrueForge integration
-- [ ] Register the MCP server as a remote HTTP connector
-- [ ] Confirm destructive tools auto-gate (Allow/Deny pause)
+- [x] Register the MCP server as a remote HTTP connector
+- [~] Confirm destructive tools auto-gate — verified at discovery (TrueForge sees
+      destructiveHint on all 4); live Allow/Deny pause pending an agent run (needs model key)
 - [ ] Runbook skill (decision rules loaded at runtime)
 - [ ] Generative-UI approval card (diff + blast radius + rollback)
 - [ ] Closed-loop verify + session resume
