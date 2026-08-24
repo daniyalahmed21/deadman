@@ -1,0 +1,74 @@
+/**
+ * DEADMAN MCP server — remote streamable-HTTP.
+ *
+ * Stateful streamable-HTTP with per-session transports is what TrueForge's MCP client
+ * expects. Register in TrueForge as  http://host.docker.internal:9000/mcp  (TrueForge runs
+ * in Docker, so `localhost` there is the container, not your host).
+ *
+ * Run:  npm install && npm run dev   →  http://localhost:9000/mcp
+ */
+
+import express, { type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { registerDeadmanTools } from "./tools.js";
+
+const PORT = Number(process.env.PORT ?? 9000);
+
+function buildServer(): McpServer {
+  const server = new McpServer({ name: "deadman", version: "0.1.0" });
+  registerDeadmanTools(server);
+  return server;
+}
+
+const app = express();
+app.use(express.json());
+
+const transports: Record<string, StreamableHTTPServerTransport> = {};
+
+app.post("/mcp", async (req: Request, res: Response) => {
+  const sid = req.headers["mcp-session-id"] as string | undefined;
+  let transport = sid ? transports[sid] : undefined;
+
+  if (!transport) {
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        transports[id] = transport!;
+        console.log(`[deadman] session initialized: ${id}`);
+      },
+    });
+    transport.onclose = () => {
+      if (transport!.sessionId) delete transports[transport!.sessionId];
+    };
+    await buildServer().connect(transport);
+  }
+  await transport.handleRequest(req, res, req.body);
+});
+
+const bySession = async (req: Request, res: Response) => {
+  const sid = req.headers["mcp-session-id"] as string | undefined;
+  const transport = sid ? transports[sid] : undefined;
+  if (!transport) {
+    res.status(400).send("Unknown or missing Mcp-Session-Id");
+    return;
+  }
+  await transport.handleRequest(req, res);
+};
+
+app.get("/mcp", bySession); // server→client SSE
+app.delete("/mcp", bySession); // end session
+
+app.get("/", (_req, res) => res.type("text").send("deadman MCP — POST /mcp"));
+
+app.listen(PORT, () => {
+  console.log(`[deadman] MCP server on http://localhost:${PORT}/mcp`);
+  console.log(
+    "[deadman] tools: investigate_incident, get_service_health, propose_remediation, dry_run,",
+  );
+  console.log(
+    "[deadman]        verify_resolution, restart_pod (SAFE), bump_memory/rollback_deploy/",
+  );
+  console.log("[deadman]        delete_pvc/scale_to_zero (GATED, destructiveHint)");
+});
