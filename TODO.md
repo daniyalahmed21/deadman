@@ -30,10 +30,11 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [ ] Generative-UI approval card (diff + blast radius + rollback)
 - [ ] Closed-loop verify + session resume
 
-## Runbook
+## Runbook & Skills
 - [x] Runbook-aware remediation via `get_runbook` tool (OOMKill→bump memory, never delete PVC, etc.)
-- [ ] Native TrueForge SKILL (sandbox-materialized) — deferred; needs a working sandbox
-      (Daytona cloud auth, or bwrap/socat/rg in a custom TrueForge image)
+- [x] Native TrueForge SKILL (git-loaded `sre-runbook`) materialized in a **Daytona sandbox**
+      — sandbox provider configured, agent has sandbox+skill, session shows `sandbox.created`
+      with 0 errors. (Daytona snapshot build 502s transiently; setup-daytona.sh retries.)
 
 ## Safety depth
 - [x] Sensitive-target floor: engine refuses destructive ops on protected targets (defense in depth)
