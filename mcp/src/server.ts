@@ -10,9 +10,18 @@
 
 import express, { type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerDeadmanTools } from "./tools.js";
+import { narrationEnabled } from "./llm.js";
+
+// Load mcp/.env (ANTHROPIC_API_KEY etc.) if present — optional, safe when absent.
+try {
+  process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
+} catch {
+  /* no .env — deterministic mode */
+}
 
 const PORT = Number(process.env.PORT ?? 9000);
 
@@ -71,4 +80,5 @@ app.listen(PORT, () => {
     "[deadman]        verify_resolution, restart_pod (SAFE), bump_memory/rollback_deploy/",
   );
   console.log("[deadman]        delete_pvc/scale_to_zero (GATED, destructiveHint)");
+  console.log(`[deadman] investigation narration: ${narrationEnabled() ? "LLM (key present)" : "deterministic"}`);
 });

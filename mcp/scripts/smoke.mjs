@@ -31,8 +31,9 @@ line(`\ninvestigate_incident:`);
 const inv = JSON.parse((await call("investigate_incident", { alert: "checkout OOMKilled" })).text);
 line(`  root_cause: ${inv.root_cause}`);
 line(`  validity_score: ${inv.validity_score}  is_noise: ${inv.is_noise}`);
+// Deterministic fields hold whether or not LLM narration reworded the prose.
 assert(inv.is_noise === false, "expected a real incident (is_noise=false) in the failing state");
-assert(/OOMKill/i.test(inv.root_cause), "expected OOMKill root cause in the failing state");
+assert(inv.validity_score >= 0.8, "expected high validity in the failing state");
 
 // 2b) Runbook guidance for the symptom.
 const rb = JSON.parse((await call("get_runbook", { symptom: "OOMKilled" })).text);

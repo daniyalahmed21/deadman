@@ -19,6 +19,7 @@ import { guardDestructive } from "./guard.js";
 import * as audit from "./audit.js";
 import { backend } from "./backend.js";
 import { runbookFor } from "./runbook.js";
+import { narrate } from "./llm.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -73,8 +74,8 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ alert, service }) => {
-      void alert;
-      return json(backend.investigate(service ?? "checkout"));
+      const base = backend.investigate(service ?? "checkout");
+      return json(await narrate(base, alert ?? ""));
     },
   );
 

@@ -58,11 +58,27 @@ limit; `bump_memory` to ≥512Mi resolves it. `data-0` is a healthy PVC that is 
    catastrophic targets are refused outright, even if approved.
 3. **Audit trail**: every mutating call — executed or refused — is recorded (`get_audit_log`).
 
+## Investigation
+
+`investigate_incident` derives the root cause from **live signals** (memory limit, restart
+counts, OOMKill status) via the active backend — the diagnosis changes when the cluster does.
+
+Optionally, Claude narrates the prose (root cause / report / summary) grounded in that same
+evidence, while the numeric fields stay deterministic:
+
+```sh
+# mcp/.env  (gitignored)
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+- On automatically when `ANTHROPIC_API_KEY` is present; falls back to the deterministic
+  write-up on any missing key, refusal, or error.
+- `DEADMAN_LLM_NARRATION=off` forces deterministic (recommended for a repeatable recording).
+- `DEADMAN_LLM_MODEL` overrides the model (default `claude-opus-4-8`).
+
 ## Status
 
-- ✅ Transport, full tool surface, gate annotations, sim **and** live kind backend, safety
-  floor, audit trail, unit tests + CI.
-- ⏳ `investigate_incident` returns a **canned** result — swap for the live investigation
-  call once the engine's API key is wired.
+- ✅ Full tool surface, gate annotations, sim **and** live kind backend, safety floor, audit
+  trail, live+narrated investigation, runbook, unit tests + CI.
 
-The output contracts don't change when a stub is swapped — only the tool bodies.
+The output contracts don't change when a backend or narration is swapped — only the tool bodies.

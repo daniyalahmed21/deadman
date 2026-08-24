@@ -11,7 +11,8 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] Unit tests (classifier, guard, cluster, audit) — 14 passing
 - [x] `investigate_incident` derives RCA from LIVE signals (memory limit, restarts, OOMKill
       status) — real kubectl in kind mode; diagnosis changes when the cluster changes
-- [ ] Optional: LLM-narrated investigation (needs a model key in the engine process)
+- [x] Optional LLM-narrated investigation (Anthropic SDK, claude-opus-4-8, structured output)
+      — on when ANTHROPIC_API_KEY present; deterministic fallback; DEADMAN_LLM_NARRATION=off
 - [x] Real `kind` cluster backend (kubectl) behind a swappable interface; sim stays default
 - [x] Live end-to-end on real infra: agent → gate → approved → real kubectl fix → verified
 - [x] Self-validate tool inputs (typed schemas + bounds, e.g. mib <= 65536)
