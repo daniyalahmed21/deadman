@@ -9,7 +9,9 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] Deterministic in-memory cluster (closed-loop `verify_resolution`)
 - [x] Smoke test: tools list, gate flags, closed-loop verify
 - [x] Unit tests (classifier, guard, cluster, audit) — 14 passing
-- [ ] Swap `investigate_incident` canned result for the live investigation call
+- [x] `investigate_incident` derives RCA from LIVE signals (memory limit, restarts, OOMKill
+      status) — real kubectl in kind mode; diagnosis changes when the cluster changes
+- [ ] Optional: LLM-narrated investigation (needs a model key in the engine process)
 - [x] Real `kind` cluster backend (kubectl) behind a swappable interface; sim stays default
 - [x] Live end-to-end on real infra: agent → gate → approved → real kubectl fix → verified
 - [x] Self-validate tool inputs (typed schemas + bounds, e.g. mib <= 65536)

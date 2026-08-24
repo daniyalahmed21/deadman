@@ -13,7 +13,7 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { CANNED_INVESTIGATION, serviceHealthFixture } from "./fixtures.js";
+import { serviceHealthFixture } from "./fixtures.js";
 import { classifyTool } from "./classifier.js";
 import { guardDestructive } from "./guard.js";
 import * as audit from "./audit.js";
@@ -64,14 +64,16 @@ export function registerDeadmanTools(server: McpServer): void {
     {
       title: "Investigate incident",
       description:
-        "Run the SRE investigation loop on an alert and return a root-cause analysis with evidence. Read-only.",
-      inputSchema: { alert: z.string().describe("Raw alert payload or a short description") },
+        "Run the SRE investigation on an alert: gather live signals (memory limit, restart counts, OOMKill status) for the affected service and return a root-cause analysis with evidence. Read-only.",
+      inputSchema: {
+        alert: z.string().describe("Raw alert payload or a short description"),
+        service: z.string().optional().describe("Affected service/deployment (default: checkout)"),
+      },
       annotations: { readOnlyHint: true },
     },
-    async ({ alert }) => {
-      // TODO: replace with the live investigation call once the engine key is wired.
+    async ({ alert, service }) => {
       void alert;
-      return json(CANNED_INVESTIGATION);
+      return json(backend.investigate(service ?? "checkout"));
     },
   );
 

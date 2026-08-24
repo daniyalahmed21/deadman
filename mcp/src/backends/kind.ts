@@ -9,6 +9,8 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ClusterBackend, HealthSnapshot } from "../backend.js";
+import { buildInvestigation } from "../investigate.js";
+import type { InvestigationResult } from "../fixtures.js";
 
 const CTX = process.env.KIND_CONTEXT ?? "kind-deadman";
 const NS = process.env.KIND_NAMESPACE ?? "prod";
@@ -62,6 +64,32 @@ export const kindBackend: ClusterBackend = {
 
   reset() {
     run(["apply", "-f", SEED]);
+  },
+
+  investigate(deployment): InvestigationResult {
+    const memLimitMib = memLimit(deployment);
+    const raw = nsTry([
+      "get",
+      "pods",
+      "-l",
+      `app=${deployment}`,
+      "-o",
+      'jsonpath={range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].restartCount}{" "}{.status.containerStatuses[0].lastState.terminated.reason}{"\\n"}{end}',
+    ]);
+    const pods = raw.ok
+      ? raw.out
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => {
+            const [name, restarts, reason] = l.split(" ");
+            return {
+              name: name ?? "",
+              restarts: Number(restarts ?? 0),
+              oomKilled: /OOMKilled/i.test(reason ?? ""),
+            };
+          })
+      : [];
+    return buildInvestigation(deployment, memLimitMib, pods);
   },
 
   serviceHealth(deployment): HealthSnapshot {

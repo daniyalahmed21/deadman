@@ -26,11 +26,13 @@ const call = async (name, args = {}) => {
 };
 const assert = (cond, msg) => { if (!cond) { console.error(`❌ ${msg}`); process.exit(1); } };
 
-// 2) Investigate → should return a root-cause report.
+// 2) Investigate → grounded root-cause report from live signals.
 line(`\ninvestigate_incident:`);
 const inv = JSON.parse((await call("investigate_incident", { alert: "checkout OOMKilled" })).text);
 line(`  root_cause: ${inv.root_cause}`);
 line(`  validity_score: ${inv.validity_score}  is_noise: ${inv.is_noise}`);
+assert(inv.is_noise === false, "expected a real incident (is_noise=false) in the failing state");
+assert(/OOMKill/i.test(inv.root_cause), "expected OOMKill root cause in the failing state");
 
 // 3) The real fix (bump memory) → verify the loop closes.
 line(`\nbump_memory(checkout, 512):`);

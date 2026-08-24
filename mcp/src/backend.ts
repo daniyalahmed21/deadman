@@ -11,6 +11,8 @@
 
 import * as sim from "./cluster.js";
 import { kindBackend } from "./backends/kind.js";
+import { buildInvestigation } from "./investigate.js";
+import type { InvestigationResult } from "./fixtures.js";
 
 export interface HealthSnapshot {
   deployment: string;
@@ -23,6 +25,7 @@ export interface HealthSnapshot {
 export interface ClusterBackend {
   readonly mode: "sim" | "kind";
   reset(): void;
+  investigate(deployment: string): InvestigationResult;
   serviceHealth(deployment: string): HealthSnapshot;
   deploymentMem(deployment: string): number | undefined;
   deploymentReplicas(deployment: string): number | undefined;
@@ -37,6 +40,15 @@ export interface ClusterBackend {
 const simBackend: ClusterBackend = {
   mode: "sim",
   reset: () => sim.resetCluster(),
+  investigate: (d) => {
+    const h = sim.snapshotHealth(d);
+    const pods = h.pods.map((p) => ({
+      name: p.name,
+      restarts: p.restarts,
+      oomKilled: /OOMKilled/i.test(p.phase),
+    }));
+    return buildInvestigation(d, h.memLimitMib, pods);
+  },
   serviceHealth: (d) => sim.snapshotHealth(d),
   deploymentMem: (d) => sim.getDeployment(d)?.memLimitMib,
   deploymentReplicas: (d) => sim.getDeployment(d)?.replicas,
