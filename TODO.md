@@ -14,8 +14,11 @@ Progress is tracked here and checked off in the same commit that lands the work.
 
 ## TrueForge integration
 - [x] Register the MCP server as a remote HTTP connector
-- [~] Confirm destructive tools auto-gate — verified at discovery (TrueForge sees
-      destructiveHint on all 4); live Allow/Deny pause pending an agent run (needs model key)
+- [x] Confirm destructive tools auto-gate — LIVE: agent's `bump_memory` call halted with
+      `tool.approval_required`; Deny → agent obeys (no retry); Allow → fix applies
+- [x] DEADMAN agent spec (approval gate, dynamic subagents, ask_user)
+- [x] Live end-to-end: investigate → dry_run → safe restart → gated fix →
+      verify → resolved; HARDLINE refused; uninvolved PVC left alone
 - [ ] Runbook skill (decision rules loaded at runtime)
 - [ ] Generative-UI approval card (diff + blast radius + rollback)
 - [ ] Closed-loop verify + session resume
