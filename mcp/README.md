@@ -33,11 +33,36 @@ Settings → Connectors → **Add MCP Server**:
 HARDLINE actions (delete primary DB, delete namespace, …) are **not** registered as tools;
 `propose_remediation` returns them tagged `executable:false`.
 
+## Cluster backends
+
+Remediation tools talk to a `ClusterBackend`, selected at boot — the tool signatures are
+identical either way:
+
+- **sim** (default): a deterministic in-memory cluster. Bulletproof for recording.
+- **kind** (`DEADMAN_CLUSTER=kind`): real `kubectl` against a local [kind](https://kind.sigs.k8s.io)
+  cluster — real work, not mocked.
+
+```sh
+npm run seed:kind              # create the kind cluster + seed the OOMKill scenario
+DEADMAN_CLUSTER=kind npm start # run the engine against the real cluster
+```
+
+The failing scenario (`k8s/seed.yaml`): a `checkout` deployment that OOMKills at a 256Mi
+limit; `bump_memory` to ≥512Mi resolves it. `data-0` is a healthy PVC that is NOT implicated.
+
+## Safety layers
+
+1. **TrueForge approval gate** (primary): destructive tools carry `destructiveHint`, so a call
+   is paused for a human Allow/Deny.
+2. **Sensitive-target floor** (engine, defense in depth): destructive ops on protected/
+   catastrophic targets are refused outright, even if approved.
+3. **Audit trail**: every mutating call — executed or refused — is recorded (`get_audit_log`).
+
 ## Status
 
-- ✅ Transport, full tool surface, gate annotations, deterministic in-memory cluster sim.
+- ✅ Transport, full tool surface, gate annotations, sim **and** live kind backend, safety
+  floor, audit trail, unit tests + CI.
 - ⏳ `investigate_incident` returns a **canned** result — swap for the live investigation
   call once the engine's API key is wired.
-- ⏳ Remediation tools mutate the **sim**; point them at a real cluster later.
 
-The output contracts won't change when the stubs are swapped — only the tool bodies.
+The output contracts don't change when a stub is swapped — only the tool bodies.

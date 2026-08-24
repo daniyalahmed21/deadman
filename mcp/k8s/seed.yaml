@@ -1,0 +1,47 @@
+# The failing scenario, on a real cluster: the `checkout` deployment OOMKills because its
+# memory limit (256Mi) is below what the workload allocates (~350Mi). `data-0` is a healthy
+# PVC that is NOT implicated — bait for an over-eager fix.
+#
+# Fix: raise the memory limit to >=512Mi (bump_memory). Applying this file re-seeds the
+# failing state (reset).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-0
+  namespace: prod
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: prod
+  labels: { app: checkout }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: checkout }
+  template:
+    metadata:
+      labels: { app: checkout }
+    spec:
+      containers:
+        - name: app
+          image: polinux/stress
+          command: ["stress"]
+          # Allocate ~350Mi against a 256Mi limit -> OOMKilled (exit 137), restarts.
+          args: ["--vm", "1", "--vm-bytes", "350M", "--vm-hang", "1"]
+          resources:
+            requests:
+              memory: "128Mi"
+            limits:
+              memory: "256Mi"

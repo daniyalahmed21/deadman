@@ -17,16 +17,7 @@ import { CANNED_INVESTIGATION, serviceHealthFixture } from "./fixtures.js";
 import { classifyTool } from "./classifier.js";
 import { guardDestructive } from "./guard.js";
 import * as audit from "./audit.js";
-import {
-  bumpMemory,
-  deletePvc,
-  getDeployment,
-  pvcExists,
-  restartPods,
-  rollbackDeploy,
-  scaleToZero,
-  snapshotHealth,
-} from "./cluster.js";
+import { backend } from "./backend.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -183,7 +174,7 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ target }) => {
-      const health = snapshotHealth(target);
+      const health = backend.serviceHealth(target);
       return json({ ...health, resolved: health.healthy });
     },
   );
@@ -213,7 +204,7 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ target }) => {
       // SAFE (reversible, low-risk): no gate, but still audited.
-      const outcome = restartPods(target);
+      const outcome = backend.restartPods(target);
       audit.record({ action: "restart_pod", target, tier: "SAFE", outcome, isError: false });
       return text(`[SAFE] ${outcome}`);
     },
@@ -237,9 +228,9 @@ export function registerDeadmanTools(server: McpServer): void {
       guardedMutation(
         "bump_memory",
         target,
-        getDeployment(target)?.memLimitMib,
-        () => bumpMemory(target, mib),
-        () => getDeployment(target)?.memLimitMib,
+        backend.deploymentMem(target),
+        () => backend.bumpMemory(target, mib),
+        () => backend.deploymentMem(target),
       ),
   );
 
@@ -252,7 +243,7 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { destructiveHint: true },
     },
     async ({ target }) =>
-      guardedMutation("rollback_deploy", target, undefined, () => rollbackDeploy(target), () => undefined),
+      guardedMutation("rollback_deploy", target, undefined, () => backend.rollbackDeploy(target), () => undefined),
   );
 
   server.registerTool(
@@ -268,9 +259,9 @@ export function registerDeadmanTools(server: McpServer): void {
       guardedMutation(
         "delete_pvc",
         target,
-        { exists: pvcExists(target) },
-        () => deletePvc(target),
-        () => ({ exists: pvcExists(target) }),
+        { exists: backend.pvcExists(target) },
+        () => backend.deletePvc(target),
+        () => ({ exists: backend.pvcExists(target) }),
       ),
   );
 
@@ -286,9 +277,9 @@ export function registerDeadmanTools(server: McpServer): void {
       guardedMutation(
         "scale_to_zero",
         target,
-        getDeployment(target)?.replicas,
-        () => scaleToZero(target),
-        () => getDeployment(target)?.replicas,
+        backend.deploymentReplicas(target),
+        () => backend.scaleToZero(target),
+        () => backend.deploymentReplicas(target),
       ),
   );
 }
