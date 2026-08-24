@@ -23,6 +23,8 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] DEADMAN agent spec (approval gate, dynamic subagents, ask_user)
 - [x] Live end-to-end: investigate → dry_run → safe restart → gated fix →
       verify → resolved; HARDLINE refused; uninvolved PVC left alone
+- [x] Persistent sessions verified — full trajectory durably retrievable (resume)
+- [x] One-command demo runner (demo.sh): reset → incident → gate → approve → fix → verify
 - [ ] Runbook skill (decision rules loaded at runtime)
 - [ ] Generative-UI approval card (diff + blast radius + rollback)
 - [ ] Closed-loop verify + session resume
@@ -34,5 +36,6 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [ ] Consecutive-denial circuit breaker (harness-side; revisit)
 
 ## Demo
-- [ ] Seed the failure scenario end-to-end
-- [ ] Rehearse + record the 3-minute demo
+- [x] Seed the failure scenario end-to-end (kind + sim)
+- [x] Scripted end-to-end demo (demo.sh)
+- [ ] Rehearse + record the 3-minute demo (human, in the UI)
