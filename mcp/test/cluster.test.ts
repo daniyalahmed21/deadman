@@ -7,6 +7,9 @@ import {
   deletePvc,
   scaleToZero,
   pvcExists,
+  podMetricsSim,
+  podLogsSim,
+  clusterEventsSim,
 } from "../src/cluster.js";
 import * as audit from "../src/audit.js";
 
@@ -44,6 +47,19 @@ describe("cluster sim — closed loop", () => {
     scaleToZero("checkout");
     expect(snapshotHealth("checkout").replicas).toBe(0);
     expect(snapshotHealth("checkout").healthy).toBe(false);
+  });
+});
+
+describe("telemetry (sim) tracks state", () => {
+  it("shows over-limit demand while failing and a fitting working set after the fix", () => {
+    expect(podMetricsSim("checkout").workingSetMib).toBeGreaterThan(256); // failing: demand > limit
+    bumpMemory("checkout", 512);
+    expect(podMetricsSim("checkout").workingSetMib).toBeLessThan(512); // fixed: now fits
+  });
+
+  it("logs and events reflect the OOMKill while failing", () => {
+    expect(podLogsSim("checkout", 10).join(" ")).toMatch(/OOMKilled/i);
+    expect(clusterEventsSim("checkout").join(" ")).toMatch(/OOMKilling/i);
   });
 });
 

@@ -35,6 +35,14 @@ line(`  validity_score: ${inv.validity_score}  is_noise: ${inv.is_noise}`);
 assert(inv.is_noise === false, "expected a real incident (is_noise=false) in the failing state");
 assert(inv.validity_score >= 0.8, "expected high validity in the failing state");
 
+// 2a2) Live telemetry tools.
+const met = JSON.parse((await call("get_metrics", { service: "checkout" })).text);
+line(`get_metrics → working set ${met.workingSetMib}Mi, cpu ${met.cpuMillis}m`);
+assert(met.workingSetMib > 0, "expected non-zero working set from get_metrics");
+const evs = JSON.parse((await call("get_events", { service: "checkout" })).text);
+line(`get_events → ${evs.events.length} event(s)`);
+assert(Array.isArray(evs.events), "expected events array");
+
 // 2b) Runbook guidance for the symptom.
 const rb = JSON.parse((await call("get_runbook", { symptom: "OOMKilled" })).text);
 line(`get_runbook(OOMKilled): ${rb.runbook[0]?.rule?.slice(0, 70)}...`);

@@ -61,6 +61,52 @@ export function pvcExists(name: string): boolean {
   return state.pvcs[name] !== undefined;
 }
 
+// --- Telemetry (synthetic but state-coherent; the kind backend reads the real thing) ------
+
+/** Live-ish memory/cpu usage. Failing state shows demand ~451Mi; after the fix it fits ~348Mi. */
+export function podMetricsSim(deployment: string): {
+  workingSetMib: number;
+  cpuMillis: number;
+  pods: { name: string; memMib: number; cpuMillis: number }[];
+} {
+  const dep = state.deployments[deployment];
+  const healthy = (dep?.memLimitMib ?? 0) >= 512;
+  const workingSetMib = healthy ? 348 : 451;
+  const pods = Object.values(state.pods)
+    .filter((p) => p.deployment === deployment)
+    .map((p) => ({ name: p.name, memMib: workingSetMib, cpuMillis: 120 }));
+  return { workingSetMib, cpuMillis: 120, pods };
+}
+
+export function podLogsSim(deployment: string, lines: number): string[] {
+  const failing = (state.deployments[deployment]?.memLimitMib ?? 0) < 512;
+  const all = failing
+    ? [
+        "stress: info: [1] dispatching hogs: 1 vm",
+        "stress: FAIL: [1] (415) <-- worker got signal 9",
+        "stress: WARN: [1] now reaping child worker processes",
+        "container app exceeded memory limit (256Mi) -> OOMKilled (exit 137)",
+      ]
+    : ["stress: info: [1] dispatching hogs: 1 vm", "checkout: ready, serving traffic"];
+  return all.slice(-Math.max(1, lines));
+}
+
+export function clusterEventsSim(deployment: string): string[] {
+  const failing = (state.deployments[deployment]?.memLimitMib ?? 0) < 512;
+  return failing
+    ? [
+        "Warning  OOMKilling   Container app was OOM-killed (exit 137)",
+        "Warning  BackOff      Back-off restarting failed container app",
+        "Normal   Pulled       Container image already present on machine",
+      ]
+    : ["Normal  ScalingReplicaSet  scaled up replica set", "Normal  Started  Started container app"];
+}
+
+export function deployHistorySim(deployment: string): string[] {
+  const limit = state.deployments[deployment]?.memLimitMib ?? 256;
+  return ["REVISION  CHANGE-CAUSE", "1         initial deploy", `2         memory limit set to ${limit}Mi`];
+}
+
 export function snapshotHealth(deployment: string): {
   deployment: string;
   healthy: boolean;

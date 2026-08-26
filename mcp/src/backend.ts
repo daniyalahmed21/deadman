@@ -22,11 +22,26 @@ export interface HealthSnapshot {
   pods: { name: string; phase: string; restarts: number }[];
 }
 
+export interface PodMetric {
+  name: string;
+  memMib: number;
+  cpuMillis: number;
+}
+export interface Metrics {
+  workingSetMib: number;
+  cpuMillis: number;
+  pods: PodMetric[];
+}
+
 export interface ClusterBackend {
   readonly mode: "sim" | "kind";
   reset(): void;
   investigate(deployment: string): InvestigationResult;
   serviceHealth(deployment: string): HealthSnapshot;
+  metrics(deployment: string): Metrics;
+  logs(deployment: string, lines: number): string[];
+  events(deployment: string): string[];
+  deployHistory(deployment: string): string[];
   deploymentMem(deployment: string): number | undefined;
   deploymentReplicas(deployment: string): number | undefined;
   pvcExists(name: string): boolean;
@@ -47,9 +62,13 @@ const simBackend: ClusterBackend = {
       restarts: p.restarts,
       oomKilled: /OOMKilled/i.test(p.phase),
     }));
-    return buildInvestigation(d, h.memLimitMib, pods);
+    return buildInvestigation(d, h.memLimitMib, pods, sim.podMetricsSim(d).workingSetMib);
   },
   serviceHealth: (d) => sim.snapshotHealth(d),
+  metrics: (d) => sim.podMetricsSim(d),
+  logs: (d, n) => sim.podLogsSim(d, n),
+  events: (d) => sim.clusterEventsSim(d),
+  deployHistory: (d) => sim.deployHistorySim(d),
   deploymentMem: (d) => sim.getDeployment(d)?.memLimitMib,
   deploymentReplicas: (d) => sim.getDeployment(d)?.replicas,
   pvcExists: (n) => sim.pvcExists(n),

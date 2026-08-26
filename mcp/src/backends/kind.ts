@@ -8,7 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { ClusterBackend, HealthSnapshot } from "../backend.js";
+import type { ClusterBackend, HealthSnapshot, Metrics } from "../backend.js";
 import { buildInvestigation } from "../investigate.js";
 import type { InvestigationResult } from "../fixtures.js";
 
@@ -59,6 +59,28 @@ function specReplicas(deployment: string): number {
   return r.ok && r.out ? Number(r.out) : 0;
 }
 
+/** Real pod memory/cpu from metrics-server (`kubectl top`). Empty until metrics populate. */
+function readMetrics(deployment: string): Metrics {
+  // `kubectl top pods -l app=<dep> --no-headers` -> "name  <cpu>m  <mem>Mi"
+  const r = nsTry(["top", "pods", "-l", `app=${deployment}`, "--no-headers"]);
+  const pods = r.ok
+    ? r.out
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => {
+          const [name, cpu, mem] = l.trim().split(/\s+/);
+          return {
+            name: name ?? "",
+            cpuMillis: Number((cpu ?? "0m").replace(/m$/, "")) || 0,
+            memMib: parseMemMib(mem ?? "0"),
+          };
+        })
+    : [];
+  const workingSetMib = pods.reduce((m, p) => Math.max(m, p.memMib), 0);
+  const cpuMillis = pods.reduce((s, p) => s + p.cpuMillis, 0);
+  return { workingSetMib, cpuMillis, pods };
+}
+
 export const kindBackend: ClusterBackend = {
   mode: "kind",
 
@@ -89,7 +111,7 @@ export const kindBackend: ClusterBackend = {
             };
           })
       : [];
-    return buildInvestigation(deployment, memLimitMib, pods);
+    return buildInvestigation(deployment, memLimitMib, pods, readMetrics(deployment).workingSetMib);
   },
 
   serviceHealth(deployment): HealthSnapshot {
@@ -113,6 +135,30 @@ export const kindBackend: ClusterBackend = {
           })
       : [];
     return { deployment, healthy: memLimitMib >= HEALTHY_MEM_MIB && replicas >= 1, memLimitMib, replicas, pods };
+  },
+
+  metrics(deployment) {
+    return readMetrics(deployment);
+  },
+  logs(deployment, lines) {
+    const r = nsTry(["logs", "-l", `app=${deployment}`, `--tail=${lines}`, "--all-containers=true"]);
+    return r.ok ? r.out.split("\n").filter(Boolean) : [`(no logs: ${r.out})`];
+  },
+  events(deployment) {
+    const r = nsTry([
+      "get",
+      "events",
+      "--sort-by=.lastTimestamp",
+      "-o",
+      'jsonpath={range .items[*]}{.type}{"  "}{.reason}{"  "}{.message}{"\\n"}{end}',
+    ]);
+    const lines = r.ok ? r.out.split("\n").filter(Boolean) : [];
+    const hits = lines.filter((l) => l.includes(deployment) || /OOM|BackOff|Failed|Killing/i.test(l));
+    return (hits.length > 0 ? hits : lines).slice(-10);
+  },
+  deployHistory(deployment) {
+    const r = nsTry(["rollout", "history", `deploy/${deployment}`]);
+    return r.ok ? r.out.split("\n").filter(Boolean) : [`(no history: ${r.out})`];
   },
 
   deploymentMem(deployment) {

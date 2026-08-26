@@ -91,6 +91,54 @@ export function registerDeadmanTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "get_metrics",
+    {
+      title: "Get metrics",
+      description:
+        "Read live memory/CPU usage for a deployment (from metrics-server in kind mode): working-set MiB vs limit. Read-only.",
+      inputSchema: { service: z.string().optional().describe("Deployment (default: checkout)") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service }) => json(backend.metrics(service ?? "checkout")),
+  );
+
+  server.registerTool(
+    "get_logs",
+    {
+      title: "Get logs",
+      description: "Tail recent container logs for a deployment. Read-only.",
+      inputSchema: {
+        service: z.string().optional().describe("Deployment (default: checkout)"),
+        lines: z.number().int().positive().max(200).optional().describe("Lines to tail (default 20)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service, lines }) => json({ logs: backend.logs(service ?? "checkout", lines ?? 20) }),
+  );
+
+  server.registerTool(
+    "get_events",
+    {
+      title: "Get events",
+      description: "Recent Kubernetes events relevant to a deployment (OOMKilling, BackOff, etc.). Read-only.",
+      inputSchema: { service: z.string().optional().describe("Deployment (default: checkout)") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service }) => json({ events: backend.events(service ?? "checkout") }),
+  );
+
+  server.registerTool(
+    "get_deploy_history",
+    {
+      title: "Get deploy history",
+      description: "Rollout revision history for a deployment (to correlate incidents with changes). Read-only.",
+      inputSchema: { service: z.string().optional().describe("Deployment (default: checkout)") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service }) => json({ history: backend.deployHistory(service ?? "checkout") }),
+  );
+
+  server.registerTool(
     "propose_remediation",
     {
       title: "Propose remediation",
