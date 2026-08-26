@@ -30,6 +30,24 @@ describe("root-cause synthesis", () => {
     expect(r.evidence.join(" ")).toMatch(/metrics-server/i);
   });
 
+  it("diagnoses an OOMKill and recommends bump_memory", () => {
+    const r = buildInvestigation("checkout", 256, [{ name: "checkout-0", restarts: 7, oomKilled: true, reason: "OOMKilled" }], 451);
+    expect(r.recommended_action).toBe("bump_memory");
+  });
+
+  it("diagnoses an ImagePullBackOff and recommends rollback_deploy", () => {
+    const r = buildInvestigation("checkout", 256, [{ name: "checkout-0", restarts: 0, oomKilled: false, reason: "ImagePullBackOff" }]);
+    expect(r.is_noise).toBe(false);
+    expect(r.root_cause).toMatch(/image pull/i);
+    expect(r.recommended_action).toBe("rollback_deploy");
+  });
+
+  it("diagnoses a CrashLoopBackOff (no OOM) and recommends rollback_deploy", () => {
+    const r = buildInvestigation("checkout", 512, [{ name: "checkout-0", restarts: 12, oomKilled: false, reason: "CrashLoopBackOff" }]);
+    expect(r.root_cause).toMatch(/crash-looping/i);
+    expect(r.recommended_action).toBe("rollback_deploy");
+  });
+
   it("treats a healthy deployment as likely noise", () => {
     const r = buildInvestigation("checkout", 512, [
       { name: "checkout-0", restarts: 0, oomKilled: false },
