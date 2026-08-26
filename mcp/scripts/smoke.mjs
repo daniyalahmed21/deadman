@@ -90,6 +90,8 @@ line(`dashboard/state → mode=${ds.mode} resolved=${ds.resolved} audit=${ds.aud
 assert(typeof ds.mode === "string" && Array.isArray(ds.audit), "expected dashboard state with mode + audit");
 const html = await fetch(`http://localhost:${process.env.PORT ?? 9000}/dashboard`).then((r) => r.text());
 assert(/Incident Cockpit/.test(html), "expected the dashboard HTML to serve");
+const hz = await fetch(`http://localhost:${process.env.PORT ?? 9000}/healthz`).then((r) => r.json());
+assert(hz.ok === true && typeof hz.backend === "string", "expected /healthz ok with backend");
 
 await client.close();
 line(`\n✅ smoke test passed`);

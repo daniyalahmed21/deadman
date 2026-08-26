@@ -68,7 +68,15 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] Structured audit records (action/target/tier/before/after/outcome) via get_audit_log
 - [ ] Consecutive-denial circuit breaker (harness-side; revisit)
 
+## Cost, reliability & demo kit
+- [x] Per-session cost telemetry (`scripts/cost.mjs`) — real tokens → $ + cache savings
+      (measured: ~$0.09/incident, 88% prompt-cache hit)
+- [x] `DEADMAN_DEMO_MODE` (deterministic sim, narration off, OOM scenario) + `/healthz`
+      — one flag for a bulletproof recording
+- [x] Demo kit: `docs/DEMO.md` shot-by-shot + voiceover; cockpit firing/resolved screenshots
+
 ## Demo
 - [x] Seed the failure scenario end-to-end (kind + sim)
 - [x] Scripted end-to-end demo (demo.sh)
-- [ ] Rehearse + record the 3-minute demo (human, in the UI)
+- [ ] Record the 3-minute video + voiceover (human, follow docs/DEMO.md)
+- [ ] Blog post (human)
