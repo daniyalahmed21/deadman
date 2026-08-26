@@ -13,8 +13,10 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { readFileSync } from "node:fs";
 import { registerDeadmanTools } from "./tools.js";
 import { narrationEnabled } from "./llm.js";
+import { dashboardState } from "./dashboard.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present — optional, safe when absent.
 try {
@@ -69,7 +71,15 @@ const bySession = async (req: Request, res: Response) => {
 app.get("/mcp", bySession); // server→client SSE
 app.delete("/mcp", bySession); // end session
 
-app.get("/", (_req, res) => res.type("text").send("deadman MCP — POST /mcp"));
+// --- Live incident cockpit (same-origin with the engine, so no CORS/proxy) --------------
+const DASHBOARD_HTML = readFileSync(fileURLToPath(new URL("../public/dashboard.html", import.meta.url)), "utf8");
+app.get("/dashboard", (_req, res) => res.type("html").send(DASHBOARD_HTML));
+app.get("/dashboard/state", (_req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.json(dashboardState());
+});
+
+app.get("/", (_req, res) => res.type("text").send("deadman MCP — POST /mcp · dashboard at /dashboard"));
 
 app.listen(PORT, () => {
   console.log(`[deadman] MCP server on http://localhost:${PORT}/mcp`);

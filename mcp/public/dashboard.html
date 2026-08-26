@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DEADMAN — Incident Cockpit</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121722; --panel2:#0e131c; --line:#1e2635;
+    --txt:#e6edf6; --dim:#8a97ab; --accent:#5eead4;
+    --red:#ff5c72; --amber:#f6c445; --green:#37d99a; --blue:#5aa7ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  header{display:flex;align-items:center;gap:14px;padding:16px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0e131c,#0b0e14)}
+  .logo{font-weight:800;letter-spacing:.14em;font-size:16px}
+  .logo b{color:var(--red)}
+  .mode{color:var(--dim);font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+  .pill{margin-left:auto;font-weight:700;font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid}
+  .pill.firing{color:var(--red);border-color:#3a2030;background:#1c0f16}
+  .pill.ok{color:var(--green);border-color:#123a2c;background:#0e1c16}
+  .phases{display:flex;gap:10px;padding:14px 22px;border-bottom:1px solid var(--line)}
+  .phase{flex:1;text-align:center;padding:10px;border:1px solid var(--line);border-radius:10px;color:var(--dim);font-size:12px;letter-spacing:.08em;background:var(--panel2)}
+  .phase.active{color:var(--txt);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .phase.done{color:var(--green);border-color:#123a2c}
+  main{display:grid;grid-template-columns:1.1fr .9fr 1fr;gap:16px;padding:20px 22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-height:120px}
+  .card h2{margin:0 0 12px;font-size:12px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+  .rc{font-size:15px;line-height:1.5}
+  .kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border:0}
+  .kv span:first-child{color:var(--dim)}
+  ul.ev{margin:8px 0 0;padding-left:18px}
+  ul.ev li{margin:4px 0;color:#cbd6e6}
+  .bar{height:12px;border-radius:8px;background:#0a0f18;border:1px solid var(--line);overflow:hidden;margin-top:6px}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,#37d99a,#f6c445,#ff5c72)}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;letter-spacing:.05em}
+  .SAFE{color:#0b1a14;background:var(--green)} .GATED{color:#1a1405;background:var(--amber)} .HARDLINE{color:#fff;background:var(--red)}
+  .log{list-style:none;margin:0;padding:0}
+  .log li{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .log li:last-child{border:0}
+  .log .act{font-weight:600} .log .tgt{color:var(--dim)} .log .out{margin-left:auto;font-size:12px}
+  .ok{color:var(--green)} .ref{color:var(--red)}
+  .status-good{color:var(--green)} .status-bad{color:var(--red)}
+  .foot{padding:10px 22px;color:var(--dim);font-size:12px;border-top:1px solid var(--line)}
+  .empty{color:var(--dim);font-style:italic}
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo"><b>DEAD</b>MAN</div>
+    <div class="mode" id="mode">—</div>
+    <div class="pill firing" id="status">● connecting…</div>
+  </header>
+  <div class="phases" id="phases">
+    <div class="phase" data-p="triage">TRIAGE</div>
+    <div class="phase" data-p="investigate">INVESTIGATE</div>
+    <div class="phase" data-p="remediate">REMEDIATE</div>
+    <div class="phase" data-p="verify">VERIFY</div>
+  </div>
+  <main>
+    <section class="card">
+      <h2>Root cause</h2>
+      <div class="rc" id="rc"><span class="empty">Awaiting investigation…</span></div>
+      <div style="margin-top:12px" id="validity"></div>
+      <ul class="ev" id="evidence"></ul>
+    </section>
+    <section class="card">
+      <h2>Cluster health — <span id="svc" class="mono">checkout</span></h2>
+      <div class="kv"><span>Health</span><span id="h-healthy">—</span></div>
+      <div class="kv"><span>Memory limit</span><span class="mono" id="h-limit">—</span></div>
+      <div class="kv"><span>Working set</span><span class="mono" id="h-ws">—</span></div>
+      <div class="bar"><i id="h-bar" style="width:0%"></i></div>
+      <div class="kv" style="margin-top:10px"><span>Replicas</span><span class="mono" id="h-rep">—</span></div>
+      <div class="kv"><span>CPU</span><span class="mono" id="h-cpu">—</span></div>
+    </section>
+    <section class="card">
+      <h2>Action log &amp; safety</h2>
+      <ul class="log" id="log"><li class="empty">No actions yet</li></ul>
+    </section>
+  </main>
+  <div class="foot" id="foot">polling /dashboard/state…</div>
+
+<script>
+  var esc = function (s){ return String(s).replace(/[&<>]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
+  var el = function (id){ return document.getElementById(id); };
+
+  function setPhases(s){
+    var done = {};
+    var hasAudit = s.audit && s.audit.length > 0;
+    var investigated = !!s.investigation;
+    done.triage = investigated || hasAudit;
+    done.investigate = investigated;
+    done.remediate = hasAudit;
+    done.verify = s.resolved;
+    var active = !investigated ? 'triage' : (!hasAudit ? 'investigate' : (!s.resolved ? 'remediate' : 'verify'));
+    var nodes = document.querySelectorAll('.phase');
+    for (var i=0;i<nodes.length;i++){
+      var p = nodes[i].getAttribute('data-p');
+      nodes[i].className = 'phase' + (p===active ? ' active' : (done[p] ? ' done' : ''));
+    }
+  }
+
+  function render(s){
+    el('mode').textContent = 'backend: ' + s.mode;
+    el('svc').textContent = s.service;
+    var st = el('status');
+    if (s.resolved){ st.className='pill ok'; st.textContent='✅ RESOLVED'; }
+    else { st.className='pill firing'; st.textContent='🔴 INCIDENT FIRING'; }
+
+    var inv = s.investigation;
+    if (inv){
+      el('rc').innerHTML = esc(inv.root_cause);
+      el('validity').innerHTML = '<span class="badge '+(inv.is_noise?'GATED':'HARDLINE')+'">'+(inv.is_noise?'LIKELY NOISE':'REAL INCIDENT')+'</span> <span style="color:var(--dim)">validity '+inv.validity_score+'</span>';
+      el('evidence').innerHTML = (inv.evidence||[]).map(function(e){return '<li>'+esc(e)+'</li>';}).join('');
+    }
+
+    var h = s.health, m = s.metrics;
+    el('h-healthy').innerHTML = h.healthy ? '<span class="status-good">Healthy</span>' : '<span class="status-bad">Degraded</span>';
+    el('h-limit').textContent = h.memLimitMib + 'Mi';
+    el('h-ws').textContent = (m.workingSetMib||0) + 'Mi';
+    var pct = h.memLimitMib ? Math.min(100, Math.round(100*(m.workingSetMib||0)/h.memLimitMib)) : 0;
+    el('h-bar').style.width = pct + '%';
+    el('h-rep').textContent = h.replicas + (h.pods && h.pods.length ? '  ('+h.pods.length+' pod)' : '');
+    el('h-cpu').textContent = (m.cpuMillis||0) + 'm';
+
+    var log = s.audit || [];
+    el('log').innerHTML = log.length ? log.map(function(e){
+      return '<li><span class="badge '+e.tier+'">'+e.tier+'</span>'+
+             '<span class="act">'+esc(e.action)+'</span>'+
+             '<span class="tgt">'+esc(e.target)+'</span>'+
+             '<span class="out '+(e.isError?'ref':'ok')+'">'+(e.isError?'REFUSED':'OK')+'</span></li>';
+    }).join('') : '<li class="empty">No actions yet</li>';
+
+    setPhases(s);
+    el('foot').textContent = 'live · ' + new Date(s.ts).toLocaleTimeString() + ' · ' + log.length + ' action(s)';
+  }
+
+  function poll(){
+    fetch('/dashboard/state').then(function(r){return r.json();}).then(render).catch(function(){
+      el('status').textContent='● engine offline';
+    });
+  }
+  poll(); setInterval(poll, 2000);
+</script>
+</body>
+</html>

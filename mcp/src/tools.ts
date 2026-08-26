@@ -21,6 +21,8 @@ import { backend } from "./backend.js";
 import { runbookFor } from "./runbook.js";
 import { narrate } from "./llm.js";
 import { triageAlert } from "./triage.js";
+import * as incident from "./incident.js";
+import { buildPostmortem } from "./postmortem.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -75,8 +77,10 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ alert, service }) => {
-      const base = backend.investigate(service ?? "checkout");
-      return json(await narrate(base, alert ?? ""));
+      const svc = service ?? "checkout";
+      const result = await narrate(backend.investigate(svc), alert ?? "");
+      incident.setInvestigation(svc, result);
+      return json(result);
     },
   );
 
@@ -254,6 +258,28 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ symptom }) => json({ runbook: runbookFor(symptom) }),
+  );
+
+  server.registerTool(
+    "generate_postmortem",
+    {
+      title: "Generate postmortem",
+      description:
+        "Assemble a full incident postmortem (markdown) from the latest investigation, the audit trail (actions taken and refused), and current health. Read-only.",
+      inputSchema: { service: z.string().optional().describe("Deployment (default: last investigated)") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service }) => {
+      const svc = service ?? incident.getInvestigation()?.deployment ?? "checkout";
+      const health = backend.serviceHealth(svc);
+      const md = buildPostmortem({
+        investigation: incident.getInvestigation(),
+        audit: audit.all(),
+        resolved: health.healthy,
+        memLimitMib: health.memLimitMib,
+      });
+      return text(md);
+    },
   );
 
   server.registerTool(

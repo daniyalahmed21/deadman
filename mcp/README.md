@@ -50,6 +50,14 @@ DEADMAN_CLUSTER=kind npm start # run the engine against the real cluster
 The failing scenario (`k8s/seed.yaml`): a `checkout` deployment that OOMKills at a 256Mi
 limit; `bump_memory` to ≥512Mi resolves it. `data-0` is a healthy PVC that is NOT implicated.
 
+## Live incident cockpit
+
+The engine serves a self-contained dashboard at **`/dashboard`** (polls `/dashboard/state`,
+same-origin — no CORS/proxy). It renders the incident live: the 4-phase strip, root cause +
+evidence, cluster health with a memory-usage bar, and the action log with tier badges
+(SAFE/GATED/HARDLINE) and OK/REFUSED outcomes. `generate_postmortem` produces the full
+markdown write-up from the same audit trail + investigation.
+
 ## Safety layers
 
 1. **TrueForge approval gate** (primary): destructive tools carry `destructiveHint`, so a call
