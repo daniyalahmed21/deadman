@@ -15,7 +15,7 @@ import * as incidents from "./incidents.js";
 import * as audit from "./audit.js";
 import { classifyTool } from "./classifier.js";
 import { guardDestructive } from "./guard.js";
-import { recordInvestigation } from "./cost.js";
+import { recordInvestigation, resetCost } from "./cost.js";
 
 const SERVICE = "checkout";
 
@@ -88,11 +88,13 @@ function runScenario(plan: ScenarioPlan): void {
   incidents.closeIncident(SERVICE, health.healthy, audit.all(), health.memLimitMib);
 }
 
-/** Wipe the demo stores and replay the scenario set. No-op outside sim mode. */
+/** Wipe every demo-derived store together and replay the scenario set. No-op outside sim mode. */
 export function seedDemoIncidents(): { seeded: number; skipped?: string } {
   if (backend.mode !== "sim") return { seeded: 0, skipped: "seed runs only against the sim backend" };
+  // Reset all demo telemetry as one unit so repeated seeding is idempotent (audit, history, cost).
   audit.reset();
   incidents.resetIncidents();
+  resetCost();
   for (const plan of PLANS) runScenario(plan);
   return { seeded: PLANS.length };
 }

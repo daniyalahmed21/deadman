@@ -18,10 +18,14 @@ export function Safety() {
   );
   const refused = actions.filter((a) => a.isError);
   const byTier = (t: Tier) => actions.filter((a) => a.tier === t).length;
+  const executedByTier = (t: Tier) => actions.filter((a) => a.tier === t && !a.isError).length;
 
+  // Partition by outcome so the slices sum to the total (a refused action counts once, as
+  // Refused - never also in its tier). Every action is either executed SAFE, executed GATED,
+  // or refused.
   const slices = [
-    { label: "SAFE", value: byTier("SAFE"), color: "var(--success)" },
-    { label: "GATED", value: byTier("GATED"), color: "var(--warning)" },
+    { label: "Auto-run", value: executedByTier("SAFE"), color: "var(--success)" },
+    { label: "Approved", value: executedByTier("GATED"), color: "var(--warning)" },
     { label: "Refused", value: refused.length, color: "var(--destructive)" },
   ];
 

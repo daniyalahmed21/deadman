@@ -106,8 +106,8 @@ export interface CostReport {
   usd: number;
   priceInPerMTok: number;
   priceOutPerMTok: number;
-  perIncident: {
-    id: string;
+  /** Token usage broken down per service (the LLM step is service-scoped, not incident-scoped). */
+  perService: {
     service: string;
     inputTokens: number;
     outputTokens: number;

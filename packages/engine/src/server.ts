@@ -99,6 +99,12 @@ app.get("/dashboard/policy", (_req, res) => {
 });
 app.get("/dashboard/seed-demo", (_req, res) => {
   cors(res);
+  // Seeding wipes and replays the demo stores; refuse outside demo mode so a live audit
+  // trail can never be erased by hitting this endpoint.
+  if (!demoMode()) {
+    res.status(403).json({ seeded: 0, skipped: "seeding is disabled outside demo mode" });
+    return;
+  }
   res.json(seedDemoIncidents());
 });
 

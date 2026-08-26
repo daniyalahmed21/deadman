@@ -4,11 +4,13 @@
  * agent did to production.
  */
 
+import type { Tier } from "@deadman/shared";
+
 export interface AuditEntry {
   seq: number;
   action: string;
   target: string;
-  tier: string;
+  tier: Tier;
   before?: unknown;
   after?: unknown;
   outcome: string;

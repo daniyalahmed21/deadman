@@ -23,7 +23,7 @@ export function Cost() {
   }
 
   const deterministic = Math.max(0, data.investigations - data.llmCalls);
-  const perIncident = data.perIncident.map((p) => ({ name: p.service, tokens: p.inputTokens + p.outputTokens }));
+  const perService = (data.perService ?? []).map((p) => ({ name: p.service, tokens: p.inputTokens + p.outputTokens }));
 
   return (
     <div className="space-y-5">
@@ -76,7 +76,7 @@ export function Cost() {
             <CardContent>
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={perIncident} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <BarChart data={perService} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                     <XAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
                     <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} />
                     <Tooltip
@@ -85,7 +85,7 @@ export function Cost() {
                       cursor={{ fill: "var(--muted)", opacity: 0.5 }}
                     />
                     <Bar dataKey="tokens" radius={[6, 6, 0, 0]}>
-                      {perIncident.map((_, i) => (
+                      {perService.map((_, i) => (
                         <Cell key={i} fill="var(--primary)" />
                       ))}
                     </Bar>

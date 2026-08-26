@@ -10,8 +10,9 @@
 
 import type { AuditEntry } from "./audit.js";
 import type { InvestigationSnapshot } from "./incident.js";
+import type { IncidentDetail } from "@deadman/shared";
 
-export interface IncidentRecord {
+interface IncidentRecord {
   id: string;
   service: string;
   startedAt: number;
@@ -27,6 +28,8 @@ export interface IncidentRecord {
   timeline: AuditEntry[];
   /** audit-trail length when this incident opened; its timeline starts here */
   auditBaseline: number;
+  /** true once verify_resolution has closed this incident; a closed record is never rewritten */
+  closed: boolean;
 }
 
 const records: IncidentRecord[] = [];
@@ -54,6 +57,7 @@ export function openIncident(
       memLimitBefore,
       timeline: [],
       auditBaseline: auditLen,
+      closed: false,
     };
     records.push(rec);
   } else {
@@ -66,24 +70,51 @@ export function openIncident(
   return rec;
 }
 
-/** Close the newest open incident for a service on a verify: slice its own audit window. */
+/**
+ * Close the newest still-open incident for a service on a verify. A record is closed exactly
+ * once: re-verifying after it has closed (or after a newer incident opened) never rewrites it,
+ * and its timeline is sliced to the incident's own audit window, so incidents never mix.
+ */
 export function closeIncident(
   service: string,
   resolved: boolean,
   audit: AuditEntry[],
   memLimitAfter?: number,
-): IncidentRecord | null {
-  const rec = [...records].reverse().find((r) => r.service === service);
+): IncidentDetail | null {
+  const rec = [...records].reverse().find((r) => r.service === service && !r.closed);
   if (!rec) return null;
+  rec.closed = true;
   rec.resolved = resolved;
   rec.resolvedAt = Date.now();
   rec.timeline = audit.slice(rec.auditBaseline);
   rec.memLimitAfter = memLimitAfter;
-  return rec;
+  return toDetail(rec);
 }
 
-export function allIncidents(): IncidentRecord[] {
-  return [...records].reverse(); // newest first
+/** Project an internal record onto the shared wire type: adds actions/refusals, drops internals. */
+function toDetail(rec: IncidentRecord): IncidentDetail {
+  return {
+    id: rec.id,
+    service: rec.service,
+    startedAt: rec.startedAt,
+    resolvedAt: rec.resolvedAt,
+    resolved: rec.resolved,
+    isNoise: rec.isNoise,
+    rootCause: rec.rootCause,
+    validity: rec.validity,
+    alert: rec.alert,
+    evidence: rec.evidence,
+    memLimitBefore: rec.memLimitBefore,
+    memLimitAfter: rec.memLimitAfter,
+    timeline: rec.timeline,
+    actions: rec.timeline.length,
+    refusals: rec.timeline.filter((e) => e.isError).length,
+  };
+}
+
+/** All incidents as wire-typed details, newest first. */
+export function allIncidents(): IncidentDetail[] {
+  return [...records].reverse().map(toDetail);
 }
 
 export function resetIncidents(): void {

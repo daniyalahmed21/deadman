@@ -45,8 +45,9 @@ export function costReport() {
     cur.outputTokens += u.outputTokens;
     byService.set(u.service, cur);
   }
-  const perIncident = [...byService.entries()].map(([service, t], i) => ({
-    id: `inc-${service}-${i + 1}`,
+  // Usage is metered per service (the LLM step only knows the service), so this is a
+  // per-service breakdown - not per-incident, since one service can have many incidents.
+  const perService = [...byService.entries()].map(([service, t]) => ({
     service,
     inputTokens: t.inputTokens,
     outputTokens: t.outputTokens,
@@ -63,7 +64,7 @@ export function costReport() {
     usd: usd(inputTokens, outputTokens),
     priceInPerMTok: PRICE_IN,
     priceOutPerMTok: PRICE_OUT,
-    perIncident,
+    perService,
   };
 }
 
