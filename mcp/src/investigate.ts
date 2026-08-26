@@ -1,9 +1,9 @@
 /**
- * Root-cause synthesis from live signals — scenario-aware.
+ * Root-cause synthesis from live signals - scenario-aware.
  *
- * Both backends gather the same signals — memory limit, per-pod restart counts, the pod's
+ * Both backends gather the same signals - memory limit, per-pod restart counts, the pod's
  * waiting/terminated reason (OOMKilled / CrashLoopBackOff / ImagePullBackOff), and the real
- * memory working set — and this shared function turns them into an InvestigationResult with
+ * memory working set - and this shared function turns them into an InvestigationResult with
  * a recommended remediation. Grounded in real telemetry, not a hardcoded fixture.
  */
 
@@ -50,7 +50,7 @@ export function buildInvestigation(
         "no correlated deploy, config change, or traffic spike in the window",
       ],
       validity_score: 0.91,
-      summary: `OOMKill on ${deployment}: memory limit ${memLimitMib}Mi is too low — raise to >=512Mi and restart.`,
+      summary: `OOMKill on ${deployment}: memory limit ${memLimitMib}Mi is too low - raise to >=512Mi and restart.`,
       recommended_action: "bump_memory",
     });
   }
@@ -58,7 +58,7 @@ export function buildInvestigation(
   // Scenario 2: ImagePull → a bad image reference from a recent deploy; roll back.
   if (reasonPod && /ImagePull|ErrImagePull/i.test(reasonPod.reason ?? "")) {
     return R(deployment, {
-      root_cause: `${deployment} cannot start: image pull is failing (${reasonPod.reason}) — a bad or unauthorized image reference, most likely from the latest deploy.`,
+      root_cause: `${deployment} cannot start: image pull is failing (${reasonPod.reason}) - a bad or unauthorized image reference, most likely from the latest deploy.`,
       evidence: [
         `pod ${reasonPod.name}: waiting, reason ${reasonPod.reason}`,
         "container never reached Running",
@@ -72,7 +72,7 @@ export function buildInvestigation(
   // Scenario 3: CrashLoop without OOM → failing readiness/liveness or bad config; roll back.
   if ((reasonPod && /CrashLoop/i.test(reasonPod.reason ?? "")) || maxRestarts > 0) {
     return R(deployment, {
-      root_cause: `${deployment} is crash-looping (${maxRestarts} restarts) with no OOMKill signal — likely a failing readiness/liveness probe or a bad config from a recent deploy.`,
+      root_cause: `${deployment} is crash-looping (${maxRestarts} restarts) with no OOMKill signal - likely a failing readiness/liveness probe or a bad config from a recent deploy.`,
       evidence: [
         `max restart count ${maxRestarts}`,
         "no OOMKill termination observed",
@@ -89,6 +89,6 @@ export function buildInvestigation(
     evidence: [`memory limit ${memLimitMib}Mi`, "no restarts", "no OOMKill termination"],
     validity_score: 0.2,
     is_noise: true,
-    summary: `${deployment} looks healthy — likely noise.`,
+    summary: `${deployment} looks healthy - likely noise.`,
   });
 }

@@ -1,5 +1,5 @@
 /**
- * Triage — the cheap first-pass of the SRE team.
+ * Triage - the cheap first-pass of the SRE team.
  *
  * Runs before the expensive investigation: classify the alert's severity and whether it's
  * noise, from the alert text alone. Fail-safe: anything unclassified is treated as a real
@@ -21,8 +21,8 @@ export function triageAlert(alert: string): TriageResult {
     return { is_noise: true, severity: "info", recommend_investigate: false, reason: "informational / already-resolved signal" };
   }
   if (/oomkill|crashloop|outage|\bdown\b|5\d\d|error rate|not ready|unavailable|failed|killed|exit 137/.test(a)) {
-    return { is_noise: false, severity: "critical", recommend_investigate: true, reason: "active failure signal — investigate immediately" };
+    return { is_noise: false, severity: "critical", recommend_investigate: true, reason: "active failure signal - investigate immediately" };
   }
   // Fail-safe: unknown alerts are warnings, not noise.
-  return { is_noise: false, severity: "warning", recommend_investigate: true, reason: "unclassified — investigate to be safe" };
+  return { is_noise: false, severity: "warning", recommend_investigate: true, reason: "unclassified - investigate to be safe" };
 }

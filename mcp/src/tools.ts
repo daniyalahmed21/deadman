@@ -180,7 +180,7 @@ export function registerDeadmanTools(server: McpServer): void {
             blast_radius: "low",
             executable: true,
             rollback: "n/a (rollout restart is self-healing)",
-            note: "Clears the OOMKilled pod but does NOT fix the low memory limit — will recur.",
+            note: "Clears the OOMKilled pod but does NOT fix the low memory limit - will recur.",
           },
           {
             tool: "bump_memory",
@@ -199,8 +199,8 @@ export function registerDeadmanTools(server: McpServer): void {
             reversible: false,
             blast_radius: "high",
             executable: true,
-            rollback: "NONE — data is destroyed. PVC is healthy; this is the wrong fix.",
-            note: "Irreversible. Offered but should be denied — data-0 is not implicated.",
+            rollback: "NONE - data is destroyed. PVC is healthy; this is the wrong fix.",
+            note: "Irreversible. Offered but should be denied - data-0 is not implicated.",
           },
           {
             tool: "delete_primary_database",
@@ -210,7 +210,7 @@ export function registerDeadmanTools(server: McpServer): void {
             blast_radius: "catastrophic",
             executable: false,
             rollback: "NONE",
-            note: "REFUSED outright — no approval offered. A license to act has limits.",
+            note: "REFUSED outright - no approval offered. A license to act has limits.",
           },
         ],
       });
@@ -320,7 +320,7 @@ export function registerDeadmanTools(server: McpServer): void {
     {
       title: "Bump memory limit",
       description:
-        "Raise a deployment's container memory limit (Mi) and restart. Reversible prod config change — GATED.",
+        "Raise a deployment's container memory limit (Mi) and restart. Reversible prod config change - GATED.",
       inputSchema: {
         target: z.string().describe("Deployment name"),
         mib: z.number().int().positive().max(65536).describe("New memory limit in MiB (<= 65536)"),
@@ -354,7 +354,7 @@ export function registerDeadmanTools(server: McpServer): void {
     {
       title: "Delete PVC",
       description:
-        "Delete a PersistentVolumeClaim. IRREVERSIBLE — destroys data. High blast radius — GATED.",
+        "Delete a PersistentVolumeClaim. IRREVERSIBLE - destroys data. High blast radius - GATED.",
       inputSchema: { target: z.string().describe("PVC name") },
       annotations: { destructiveHint: true },
     },
@@ -372,7 +372,7 @@ export function registerDeadmanTools(server: McpServer): void {
     "scale_to_zero",
     {
       title: "Scale to zero",
-      description: "Scale a deployment to 0 replicas (takes the service DOWN). IRREVERSIBLE impact — GATED.",
+      description: "Scale a deployment to 0 replicas (takes the service DOWN). IRREVERSIBLE impact - GATED.",
       inputSchema: { target: z.string().describe("Deployment name") },
       annotations: { destructiveHint: true },
     },
@@ -390,7 +390,7 @@ export function registerDeadmanTools(server: McpServer): void {
     "scale_deployment",
     {
       title: "Scale deployment",
-      description: "Scale a deployment to a target replica count. Prod capacity change — GATED.",
+      description: "Scale a deployment to a target replica count. Prod capacity change - GATED.",
       inputSchema: {
         target: z.string().describe("Deployment name"),
         replicas: z.number().int().min(0).max(100).describe("Target replica count"),
@@ -438,7 +438,7 @@ export function registerDeadmanTools(server: McpServer): void {
           isError: true,
         });
         return err(
-          `[REFUSED] HARDLINE: draining ${node} is the only schedulable node — this would take the entire cluster down. A license to act has limits.`,
+          `[REFUSED] HARDLINE: draining ${node} is the only schedulable node - this would take the entire cluster down. A license to act has limits.`,
         );
       }
       return guardedMutation("drain_node", node, undefined, () => backend.drainNode(node), () => undefined);

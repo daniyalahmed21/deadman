@@ -3,8 +3,8 @@
  *
  * The remediation tools talk to a `ClusterBackend`, never to kubectl or the sim directly.
  * Two implementations:
- *   - sim  (default): deterministic in-memory cluster — bulletproof for recording.
- *   - kind (DEADMAN_CLUSTER=kind): real kubectl against a local kind cluster — real work.
+ *   - sim  (default): deterministic in-memory cluster - bulletproof for recording.
+ *   - kind (DEADMAN_CLUSTER=kind): real kubectl against a local kind cluster - real work.
  *
  * Same interface both ways, so the tool signatures never change.
  */
@@ -54,7 +54,7 @@ export interface ClusterBackend {
   scaleDeployment(deployment: string, replicas: number): string;
   cordonNode(node: string): string;
   drainNode(node: string): string;
-  /** Number of schedulable (Ready) nodes — used to refuse draining the last one. */
+  /** Number of schedulable (Ready) nodes - used to refuse draining the last one. */
   nodeCount(): number;
 }
 

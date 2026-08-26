@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DEADMAN — Incident Cockpit</title>
+<title>DEADMAN - Incident Cockpit</title>
 <style>
   :root{
     --bg:#0b0e14; --panel:#121722; --panel2:#0e131c; --line:#1e2635;
@@ -50,7 +50,7 @@
 <body>
   <header>
     <div class="logo"><b>DEAD</b>MAN</div>
-    <div class="mode" id="mode">—</div>
+    <div class="mode" id="mode">-</div>
     <div class="pill firing" id="status">● connecting…</div>
   </header>
   <div class="phases" id="phases">
@@ -67,13 +67,13 @@
       <ul class="ev" id="evidence"></ul>
     </section>
     <section class="card">
-      <h2>Cluster health — <span id="svc" class="mono">checkout</span></h2>
-      <div class="kv"><span>Health</span><span id="h-healthy">—</span></div>
-      <div class="kv"><span>Memory limit</span><span class="mono" id="h-limit">—</span></div>
-      <div class="kv"><span>Working set</span><span class="mono" id="h-ws">—</span></div>
+      <h2>Cluster health - <span id="svc" class="mono">checkout</span></h2>
+      <div class="kv"><span>Health</span><span id="h-healthy">-</span></div>
+      <div class="kv"><span>Memory limit</span><span class="mono" id="h-limit">-</span></div>
+      <div class="kv"><span>Working set</span><span class="mono" id="h-ws">-</span></div>
       <div class="bar"><i id="h-bar" style="width:0%"></i></div>
-      <div class="kv" style="margin-top:10px"><span>Replicas</span><span class="mono" id="h-rep">—</span></div>
-      <div class="kv"><span>CPU</span><span class="mono" id="h-cpu">—</span></div>
+      <div class="kv" style="margin-top:10px"><span>Replicas</span><span class="mono" id="h-rep">-</span></div>
+      <div class="kv"><span>CPU</span><span class="mono" id="h-cpu">-</span></div>
     </section>
     <section class="card">
       <h2>Action log &amp; safety</h2>
@@ -83,7 +83,8 @@
   <div class="foot" id="foot">polling /dashboard/state…</div>
 
 <script>
-  var esc = function (s){ return String(s).replace(/[&<>]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
+  // Strip em/en dashes from any displayed text, then HTML-escape.
+  var esc = function (s){ return String(s).replace(/[—–]/g, '-').replace(/[&<>]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
   var el = function (id){ return document.getElementById(id); };
 
   function setPhases(s){

@@ -3,7 +3,7 @@
  *
  * The deterministic RCA (from live signals) is always the base. When an ANTHROPIC_API_KEY
  * is present and narration is enabled, Claude rewrites the prose fields (root_cause,
- * report_md, summary) grounded in that same evidence — the numeric fields (validity_score,
+ * report_md, summary) grounded in that same evidence - the numeric fields (validity_score,
  * is_noise, evidence) stay deterministic. Any missing key, refusal, or error falls back to
  * the base, so behaviour is safe either way.
  *
@@ -52,7 +52,7 @@ export async function narrate(base: InvestigationResult, alert: string): Promise
       max_tokens: 1024,
       system:
         "You are a senior SRE writing an incident root-cause analysis. Ground every statement " +
-        "strictly in the evidence provided — never invent metrics, causes, or remediations. " +
+        "strictly in the evidence provided - never invent metrics, causes, or remediations. " +
         "Return only the structured fields: a one-sentence root_cause, a short markdown report_md, " +
         "and a one-line summary.",
       messages: [
@@ -71,11 +71,12 @@ export async function narrate(base: InvestigationResult, alert: string): Promise
     const block = res.content.find((b) => b.type === "text");
     if (!block || block.type !== "text") return base;
     const p = JSON.parse(block.text) as Partial<Pick<InvestigationResult, "root_cause" | "report_md" | "summary">>;
+    const strip = (s: string) => s.replace(/[—–]/g, "-"); // no em/en dashes in output
     return {
       ...base,
-      root_cause: p.root_cause || base.root_cause,
-      report_md: p.report_md || base.report_md,
-      summary: p.summary || base.summary,
+      root_cause: strip(p.root_cause || base.root_cause),
+      report_md: strip(p.report_md || base.report_md),
+      summary: strip(p.summary || base.summary),
     };
   } catch {
     return base;

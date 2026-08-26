@@ -1,5 +1,5 @@
 /**
- * Audit trail. Every mutating tool call — executed or refused — appends one structured
+ * Audit trail. Every mutating tool call - executed or refused - appends one structured
  * record. This is the provenance/audit demo beat and the operator's record of what the
  * agent did to production.
  */

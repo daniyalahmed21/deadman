@@ -1,10 +1,10 @@
 /**
- * Blast-radius classifier — a three-tier, fail-closed model.
+ * Blast-radius classifier - a three-tier, fail-closed model.
  *
  * Three tiers:
- *   SAFE      — reversible, low blast radius → auto-run, no approval.
- *   GATED     — destructive/irreversible → TrueForge pauses for Allow/Deny.
- *   HARDLINE  — catastrophic, no recovery path → REFUSED outright. Never exposed as a
+ *   SAFE      - reversible, low blast radius → auto-run, no approval.
+ *   GATED     - destructive/irreversible → TrueForge pauses for Allow/Deny.
+ *   HARDLINE  - catastrophic, no recovery path → REFUSED outright. Never exposed as a
  *               callable tool; `propose_remediation` surfaces it tagged executable:false.
  *
  * Fail-closed rule: an action we cannot classify is treated as GATED, never SAFE.

@@ -1,5 +1,5 @@
 /**
- * DEADMAN MCP server — remote streamable-HTTP.
+ * DEADMAN MCP server - remote streamable-HTTP.
  *
  * Stateful streamable-HTTP with per-session transports is what TrueForge's MCP client
  * expects. Register in TrueForge as  http://host.docker.internal:9000/mcp  (TrueForge runs
@@ -20,11 +20,11 @@ import { dashboardState } from "./dashboard.js";
 import { backend } from "./backend.js";
 import { demoMode } from "./config.js";
 
-// Load mcp/.env (ANTHROPIC_API_KEY etc.) if present — optional, safe when absent.
+// Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
 } catch {
-  /* no .env — deterministic mode */
+  /* no .env - deterministic mode */
 }
 
 const PORT = Number(process.env.PORT ?? 9000);
@@ -85,7 +85,7 @@ app.get("/healthz", (_req, res) =>
   res.json({ ok: true, backend: backend.mode, demo: demoMode(), narration: narrationEnabled(), ts: Date.now() }),
 );
 
-app.get("/", (_req, res) => res.type("text").send("deadman MCP — POST /mcp · dashboard at /dashboard"));
+app.get("/", (_req, res) => res.type("text").send("deadman MCP - POST /mcp · dashboard at /dashboard"));
 
 app.listen(PORT, () => {
   console.log(`[deadman] MCP server on http://localhost:${PORT}/mcp`);

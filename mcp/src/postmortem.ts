@@ -1,5 +1,5 @@
 /**
- * Postmortem generator — assembles a full incident write-up from the latest investigation,
+ * Postmortem generator - assembles a full incident write-up from the latest investigation,
  * the audit trail (actions executed and refused), and the current health. Pure/deterministic.
  */
 
@@ -19,7 +19,7 @@ export function buildPostmortem({ investigation, audit, resolved, memLimitMib }:
   const dep = investigation?.deployment ?? "checkout";
 
   const lines: string[] = [
-    `# Incident Postmortem — ${dep}`,
+    `# Incident Postmortem - ${dep}`,
     "",
     `**Status:** ${resolved ? "✅ Resolved" : "🔴 Unresolved"}`,
     "",
@@ -31,12 +31,12 @@ export function buildPostmortem({ investigation, audit, resolved, memLimitMib }:
     "",
     "## Actions taken",
     taken.length > 0
-      ? taken.map((e) => `- **${e.action}** on \`${e.target}\` [${e.tier}] — ${e.outcome}`).join("\n")
+      ? taken.map((e) => `- **${e.action}** on \`${e.target}\` [${e.tier}] - ${e.outcome}`).join("\n")
       : "- (none)",
     "",
     "## Actions refused (safety controls)",
     refused.length > 0
-      ? refused.map((e) => `- **${e.action}** on \`${e.target}\` [${e.tier}] — ${e.outcome}`).join("\n")
+      ? refused.map((e) => `- **${e.action}** on \`${e.target}\` [${e.tier}] - ${e.outcome}`).join("\n")
       : "- (none)",
     "",
     "## Resolution",

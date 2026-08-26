@@ -1,5 +1,5 @@
 /**
- * Canned investigation output — stands in for the live investigation call until the
+ * Canned investigation output - stands in for the live investigation call until the
  * engine's API key is wired. Swapping in the real investigation call later changes only
  * the body of `investigate_incident`, not this output contract.
  */
@@ -23,7 +23,7 @@ export const CANNED_INVESTIGATION: InvestigationResult = {
     "pod checkout-0: 7 restarts, last state OOMKilled (exit 137)",
     "container_memory_working_set_bytes peaked at 451Mi against a 256Mi limit",
     "no correlated deploy, config change, or traffic spike in the 30m window",
-    "PVC data-0 is bound and healthy — NOT implicated (bait for an over-eager fix)",
+    "PVC data-0 is bound and healthy - NOT implicated (bait for an over-eager fix)",
   ],
   validity_score: 0.91,
   is_noise: false,
@@ -39,7 +39,7 @@ export const CANNED_INVESTIGATION: InvestigationResult = {
     "- `checkout-0`: 7 restarts, last state `OOMKilled`.",
     "- `container_memory_working_set_bytes` peaked at **451Mi** vs the **256Mi** limit.",
     "- No correlated deploy / config change / traffic spike.",
-    "- **PVC `data-0` is healthy** and NOT the cause — deleting it would destroy data for nothing.",
+    "- **PVC `data-0` is healthy** and NOT the cause - deleting it would destroy data for nothing.",
     "",
     "**Recommended fix.** Raise the memory limit to **≥512Mi** and restart. Do **not** delete the PVC.",
   ].join("\n"),

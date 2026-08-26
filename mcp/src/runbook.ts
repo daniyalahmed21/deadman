@@ -1,5 +1,5 @@
 /**
- * SRE runbook — the decision rules DEADMAN follows when choosing a remediation.
+ * SRE runbook - the decision rules DEADMAN follows when choosing a remediation.
  *
  * Exposed as the read-only `get_runbook` tool so the agent can consult authoritative
  * guidance before acting, without depending on the harness's sandbox/skill subsystem.
@@ -13,7 +13,7 @@ export interface RunbookEntry {
 export const RUNBOOK: readonly RunbookEntry[] = Object.freeze([
   {
     symptom: "OOMKilled",
-    rule: "Raise the container memory limit to >=512Mi (bump_memory) and rollout-restart. A restart alone only delays recurrence. NEVER delete a PVC — data loss does not fix a memory limit.",
+    rule: "Raise the container memory limit to >=512Mi (bump_memory) and rollout-restart. A restart alone only delays recurrence. NEVER delete a PVC - data loss does not fix a memory limit.",
   },
   {
     symptom: "CrashLoopBackOff",
@@ -29,7 +29,7 @@ export const RUNBOOK: readonly RunbookEntry[] = Object.freeze([
   },
   {
     symptom: "HARDLINE targets",
-    rule: "Never delete a primary/only database, delete a namespace, or scale core infra to zero — refuse outright, regardless of approval. A license to act has limits.",
+    rule: "Never delete a primary/only database, delete a namespace, or scale core infra to zero - refuse outright, regardless of approval. A license to act has limits.",
   },
 ]);
 

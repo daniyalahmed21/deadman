@@ -158,7 +158,7 @@ export function restartPods(deployment: string): string {
   return `rollout-restarted ${pods.length} pod(s) of ${deployment} (root cause unaddressed → will recur)`;
 }
 
-/** GATED (reversible): raise the memory limit — the actual fix for the OOMKill. */
+/** GATED (reversible): raise the memory limit - the actual fix for the OOMKill. */
 export function bumpMemory(deployment: string, mib: number): string {
   const dep = state.deployments[deployment];
   if (!dep) return `deployment ${deployment} not found`;
@@ -174,7 +174,7 @@ export function bumpMemory(deployment: string, mib: number): string {
   return `bumped ${deployment} memory ${prev}Mi → ${mib}Mi`;
 }
 
-/** GATED (reversible): roll a deployment back — the fix for crashloop / bad-image scenarios. */
+/** GATED (reversible): roll a deployment back - the fix for crashloop / bad-image scenarios. */
 export function rollbackDeploy(deployment: string): string {
   const dep = state.deployments[deployment];
   if (!dep) return `deployment ${deployment} not found`;
@@ -192,7 +192,7 @@ export function deletePvc(name: string): string {
   const pvc = state.pvcs[name];
   if (!pvc) return `pvc ${name} not found`;
   delete state.pvcs[name];
-  return `deleted pvc ${name} (IRREVERSIBLE — data gone)`;
+  return `deleted pvc ${name} (IRREVERSIBLE - data gone)`;
 }
 
 /** GATED (irreversible): scale a deployment to zero. */

@@ -2,7 +2,7 @@
  * Real kubectl backend against a local `kind` cluster.
  *
  * Enabled with DEADMAN_CLUSTER=kind. Provisions/reseeds from ../k8s/seed.yaml. Health is
- * keyed on the root cause — the memory limit — so `verify_resolution` reflects the actual
+ * keyed on the root cause - the memory limit - so `verify_resolution` reflects the actual
  * fix (limit raised to >=512Mi) rather than racing the OOMKill/restart timing.
  */
 
@@ -201,7 +201,7 @@ export const kindBackend: ClusterBackend = {
   },
   deletePvc(name) {
     ns(["delete", "pvc", name, "--wait=false"]);
-    return `deleted pvc ${name} (IRREVERSIBLE — data gone)`;
+    return `deleted pvc ${name} (IRREVERSIBLE - data gone)`;
   },
   scaleToZero(deployment) {
     ns(["scale", `deploy/${deployment}`, "--replicas=0"]);
