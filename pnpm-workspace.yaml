@@ -1,5 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
-allowBuilds:
-  esbuild: set this to true or false
+
+# Allow esbuild's install script (tsx/vitest depend on its platform binary).
+onlyBuiltDependencies:
+  - esbuild
