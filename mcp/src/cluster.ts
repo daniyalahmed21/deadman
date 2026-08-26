@@ -12,9 +12,11 @@
 export interface PodState {
   name: string;
   deployment: string;
-  /** 'Running' | 'OOMKilled' | 'CrashLoopBackOff' */
+  /** 'Running' | 'OOMKilled' | 'CrashLoopBackOff' | 'Pending' */
   phase: string;
   restarts: number;
+  /** k8s reason: OOMKilled | CrashLoopBackOff | ImagePullBackOff | ... */
+  reason?: string;
 }
 
 export interface DeploymentState {
@@ -24,32 +26,47 @@ export interface DeploymentState {
   healthy: boolean;
 }
 
+export type Scenario = "oom" | "crashloop" | "imagepull";
+
 interface ClusterState {
+  scenario: Scenario;
   deployments: Record<string, DeploymentState>;
   pods: Record<string, PodState>;
   pvcs: Record<string, { name: string; bound: boolean }>;
 }
 
-/** The seeded failing state. A fresh object each boot keeps runs identical. */
-function seed(): ClusterState {
+/** The seeded failing state for a scenario. A fresh object each boot keeps runs identical. */
+function seed(scenario: Scenario): ClusterState {
+  const podByScenario: Record<Scenario, PodState> = {
+    oom: { name: "checkout-0", deployment: "checkout", phase: "OOMKilled", restarts: 7, reason: "OOMKilled" },
+    crashloop: { name: "checkout-0", deployment: "checkout", phase: "CrashLoopBackOff", restarts: 12, reason: "CrashLoopBackOff" },
+    imagepull: { name: "checkout-0", deployment: "checkout", phase: "Pending", restarts: 0, reason: "ImagePullBackOff" },
+  };
   return {
+    scenario,
     deployments: {
       checkout: { name: "checkout", replicas: 3, memLimitMib: 256, healthy: false },
     },
-    pods: {
-      "checkout-0": { name: "checkout-0", deployment: "checkout", phase: "OOMKilled", restarts: 7 },
-    },
-    pvcs: {
-      "data-0": { name: "data-0", bound: true },
-    },
+    pods: { "checkout-0": podByScenario[scenario] },
+    pvcs: { "data-0": { name: "data-0", bound: true } },
   };
 }
 
-let state: ClusterState = seed();
+function envScenario(): Scenario {
+  const s = (process.env.DEADMAN_SCENARIO ?? "oom").toLowerCase();
+  return s === "crashloop" || s === "imagepull" ? s : "oom";
+}
+
+let state: ClusterState = seed(envScenario());
 
 /** Reset to the seeded failing state (used by tests / re-runs). */
 export function resetCluster(): void {
-  state = seed();
+  state = seed(envScenario());
+}
+
+/** Set the active failure scenario (chaos seeder for the sim). */
+export function setScenario(scenario: Scenario): void {
+  state = seed(scenario);
 }
 
 export function getDeployment(name: string): DeploymentState | undefined {
@@ -144,19 +161,26 @@ export function bumpMemory(deployment: string, mib: number): string {
   if (!dep) return `deployment ${deployment} not found`;
   const prev = dep.memLimitMib;
   dep.memLimitMib = mib;
-  if (mib >= 512) {
+  // Raising memory only resolves the OOMKill scenario.
+  if (mib >= 512 && state.scenario === "oom") {
     dep.healthy = true;
     for (const p of Object.values(state.pods)) {
-      if (p.deployment === deployment) p.phase = "Running";
+      if (p.deployment === deployment) { p.phase = "Running"; p.reason = undefined; }
     }
   }
   return `bumped ${deployment} memory ${prev}Mi → ${mib}Mi`;
 }
 
-/** GATED (reversible): roll a deployment back to its previous revision. */
+/** GATED (reversible): roll a deployment back — the fix for crashloop / bad-image scenarios. */
 export function rollbackDeploy(deployment: string): string {
   const dep = state.deployments[deployment];
   if (!dep) return `deployment ${deployment} not found`;
+  if (state.scenario === "crashloop" || state.scenario === "imagepull") {
+    dep.healthy = true;
+    for (const p of Object.values(state.pods)) {
+      if (p.deployment === deployment) { p.phase = "Running"; p.reason = undefined; p.restarts = 0; }
+    }
+  }
   return `rolled back ${deployment} to previous revision`;
 }
 

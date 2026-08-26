@@ -58,10 +58,13 @@ bash demo.sh                   # drive the full arc against TrueForge + the MCP 
 
 ## Testing
 
-- **Unit** (`npm test`): classifier tiers, sensitive-target floor, cluster sim, audit, RCA
-  synthesis, runbook — run in CI on every push.
-- **Integration** (`node mcp/scripts/smoke.mjs`): the live tool surface over MCP.
-- **End-to-end** (`demo.sh`): the agent resolving a real incident through the approval gate.
+- **Unit** (`npm test`): tiers, sensitive-target floor, cluster sim, audit, scenario RCA,
+  runbook, **adversarial** (injected-instruction refusals, frozen policy) — in CI on every push.
+- **Integration** (`mcp/scripts/smoke.mjs`): the live tool surface over MCP.
+- **End-to-end** (`mcp/scripts/e2e.mjs`): the full incident arc + safety refusals against either backend.
+- **Adversarial** (`mcp/scripts/adversarial.mjs`): prompt-injected/malicious inputs — every safety
+  control must hold. `e2e.mjs` + `adversarial.mjs` also run in CI.
+- **Chaos** (`mcp/scripts/chaos.sh oom|crashloop|imagepull`): inject a failure scenario into kind.
 
 ## Status
 

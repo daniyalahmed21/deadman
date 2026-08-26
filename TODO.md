@@ -46,6 +46,15 @@ Progress is tracked here and checked off in the same commit that lands the work.
       — sandbox provider configured, agent has sandbox+skill, session shows `sandbox.created`
       with 0 errors. (Daytona snapshot build 502s transiently; setup-daytona.sh retries.)
 
+## Chaos, scenarios & adversarial hardening
+- [x] Scenario-aware investigation: OOMKill→bump_memory, CrashLoop/ImagePull→rollback_deploy
+      (recommended_action per scenario; verified in sim AND on the real kind cluster)
+- [x] Chaos seeder: `scripts/chaos.sh oom|crashloop|imagepull` (+ k8s/scenarios manifests);
+      sim uses `DEADMAN_SCENARIO`
+- [x] Adversarial suite (unit + e2e): injected "delete the prod DB" ignored; protected PVCs
+      + drain-last-node refused; HARDLINE never exposed; policy frozen at import
+- [x] e2e + adversarial run in CI (sim backend)
+
 ## Agent teams & remediation surface
 - [x] `triage` first-pass tool (severity/noise, fail-safe to investigate)
 - [x] Expanded gated remediation: `scale_deployment`, `cordon_node`, `drain_node`

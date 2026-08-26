@@ -66,6 +66,7 @@ const simBackend: ClusterBackend = {
       name: p.name,
       restarts: p.restarts,
       oomKilled: /OOMKilled/i.test(p.phase),
+      reason: p.reason,
     }));
     return buildInvestigation(d, h.memLimitMib, pods, sim.podMetricsSim(d).workingSetMib);
   },

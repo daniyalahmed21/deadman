@@ -1,0 +1,23 @@
+# Chaos scenario: CrashLoopBackOff (not OOM). The container exits non-zero on boot,
+# simulating a bad config / failing readiness from a recent deploy. Fix = rollback_deploy.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: prod
+  labels: { app: checkout }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: checkout }
+  template:
+    metadata:
+      labels: { app: checkout }
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c", "echo booting checkout; sleep 2; echo 'config error: missing DB_URL'; exit 1"]
+          resources:
+            requests: { memory: "64Mi" }
+            limits: { memory: "512Mi" }

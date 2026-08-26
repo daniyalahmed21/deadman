@@ -12,6 +12,8 @@ export interface InvestigationResult {
   report_md: string;
   /** short summary kept in model context; full report_md is the "spill" the model can re-read */
   summary: string;
+  /** the remediation tool this scenario points to (e.g. bump_memory, rollback_deploy) */
+  recommended_action?: string;
 }
 
 export const CANNED_INVESTIGATION: InvestigationResult = {

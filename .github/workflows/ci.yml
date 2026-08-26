@@ -21,3 +21,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: integration (e2e + adversarial, sim backend)
+        run: |
+          DEADMAN_LLM_NARRATION=off PORT=9000 npm start &
+          for i in $(seq 1 30); do curl -sf http://localhost:9000/ >/dev/null && break; sleep 1; done
+          node scripts/e2e.mjs
+          node scripts/adversarial.mjs

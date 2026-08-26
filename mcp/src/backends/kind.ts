@@ -100,24 +100,27 @@ export const kindBackend: ClusterBackend = {
 
   investigate(deployment): InvestigationResult {
     const memLimitMib = memLimit(deployment);
+    // Capture both terminated (OOMKilled) and waiting (ImagePullBackOff/CrashLoopBackOff) reasons.
     const raw = nsTry([
       "get",
       "pods",
       "-l",
       `app=${deployment}`,
       "-o",
-      'jsonpath={range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].restartCount}{" "}{.status.containerStatuses[0].lastState.terminated.reason}{"\\n"}{end}',
+      'jsonpath={range .items[*]}{.metadata.name}|{.status.containerStatuses[0].restartCount}|{.status.containerStatuses[0].lastState.terminated.reason}|{.status.containerStatuses[0].state.waiting.reason}{"\\n"}{end}',
     ]);
     const pods = raw.ok
       ? raw.out
           .split("\n")
           .filter(Boolean)
           .map((l) => {
-            const [name, restarts, reason] = l.split(" ");
+            const [name, restarts, terminated, waiting] = l.split("|");
+            const reason = terminated || waiting || "";
             return {
               name: name ?? "",
               restarts: Number(restarts ?? 0),
-              oomKilled: /OOMKilled/i.test(reason ?? ""),
+              oomKilled: /OOMKilled/i.test(terminated ?? ""),
+              reason,
             };
           })
       : [];
