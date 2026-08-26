@@ -79,5 +79,17 @@ for (const e of auditLog.entries) line(`  #${e.seq} ${e.action} ${e.target} [${e
 assert(auditLog.entries.some((e) => e.action === "bump_memory" && !e.isError), "audit missing bump_memory OK");
 assert(auditLog.entries.some((e) => e.action === "delete_pvc" && e.isError), "audit missing refused delete_pvc");
 
+// 6) Postmortem generation from the audit trail + investigation.
+const pm = (await call("generate_postmortem", {})).text;
+line(`\ngenerate_postmortem → ${pm.split("\n")[0]} (${pm.length} chars)`);
+assert(/# Incident Postmortem/.test(pm) && /Actions taken/.test(pm), "expected a postmortem with actions");
+
+// 7) Live dashboard endpoint (same-origin cockpit state).
+const ds = await fetch(`http://localhost:${process.env.PORT ?? 9000}/dashboard/state`).then((r) => r.json());
+line(`dashboard/state → mode=${ds.mode} resolved=${ds.resolved} audit=${ds.audit.length}`);
+assert(typeof ds.mode === "string" && Array.isArray(ds.audit), "expected dashboard state with mode + audit");
+const html = await fetch(`http://localhost:${process.env.PORT ?? 9000}/dashboard`).then((r) => r.text());
+assert(/Incident Cockpit/.test(html), "expected the dashboard HTML to serve");
+
 await client.close();
 line(`\n✅ smoke test passed`);

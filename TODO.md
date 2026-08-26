@@ -32,6 +32,14 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [ ] Generative-UI approval card (diff + blast radius + rollback)
 - [ ] Closed-loop verify + session resume
 
+## Generative UI
+- [x] Live incident cockpit at `/dashboard` — phase strip (triage→investigate→remediate→verify),
+      root cause + evidence, cluster health with a live memory bar, action log with tier badges
+      (SAFE/GATED/HARDLINE) and OK/REFUSED. Self-contained, same-origin, polls `/dashboard/state`.
+- [x] `generate_postmortem` tool — full incident write-up from the audit trail + investigation
+- [ ] Custom TrueForge-UI approval card (React slot override) — stretch
+- [ ] Slack/Resend post-incident notification — follow-up
+
 ## Runbook & Skills
 - [x] Runbook-aware remediation via `get_runbook` tool (OOMKill→bump memory, never delete PVC, etc.)
 - [x] Native TrueForge SKILL (git-loaded `sre-runbook`) materialized in a **Daytona sandbox**
