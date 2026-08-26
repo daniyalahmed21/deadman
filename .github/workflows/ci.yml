@@ -6,24 +6,22 @@ on:
   pull_request:
 
 jobs:
-  mcp:
+  engine:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mcp
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: mcp/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter deadman-mcp typecheck
+      - run: pnpm --filter deadman-mcp test
       - name: integration (e2e + adversarial, sim backend)
+        working-directory: packages/engine
         run: |
-          DEADMAN_LLM_NARRATION=off PORT=9000 npm start &
+          DEADMAN_LLM_NARRATION=off PORT=9000 pnpm start &
           for i in $(seq 1 30); do curl -sf http://localhost:9000/ >/dev/null && break; sleep 1; done
           node scripts/e2e.mjs
           node scripts/adversarial.mjs

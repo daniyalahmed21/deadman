@@ -19,6 +19,10 @@ import { narrationEnabled } from "./llm.js";
 import { dashboardState } from "./dashboard.js";
 import { backend } from "./backend.js";
 import { demoMode } from "./config.js";
+import { allIncidents } from "./incidents.js";
+import { costReport } from "./cost.js";
+import { policy } from "./classifier.js";
+import { seedDemoIncidents } from "./seed.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
 try {
@@ -76,9 +80,32 @@ app.delete("/mcp", bySession); // end session
 // --- Live incident cockpit (same-origin with the engine, so no CORS/proxy) --------------
 const DASHBOARD_HTML = readFileSync(fileURLToPath(new URL("../public/dashboard.html", import.meta.url)), "utf8");
 app.get("/dashboard", (_req, res) => res.type("html").send(DASHBOARD_HTML));
+const cors = (res: Response) => res.set("Access-Control-Allow-Origin", "*");
 app.get("/dashboard/state", (_req, res) => {
-  res.set("Access-Control-Allow-Origin", "*");
+  cors(res);
   res.json(dashboardState());
+});
+app.get("/dashboard/incidents", (_req, res) => {
+  cors(res);
+  res.json({ incidents: allIncidents() });
+});
+app.get("/dashboard/cost", (_req, res) => {
+  cors(res);
+  res.json(costReport());
+});
+app.get("/dashboard/policy", (_req, res) => {
+  cors(res);
+  res.json(policy());
+});
+app.get("/dashboard/seed-demo", (_req, res) => {
+  cors(res);
+  // Seeding wipes and replays the demo stores; refuse outside demo mode so a live audit
+  // trail can never be erased by hitting this endpoint.
+  if (!demoMode()) {
+    res.status(403).json({ seeded: 0, skipped: "seeding is disabled outside demo mode" });
+    return;
+  }
+  res.json(seedDemoIncidents());
 });
 
 app.get("/healthz", (_req, res) =>
@@ -86,6 +113,13 @@ app.get("/healthz", (_req, res) =>
 );
 
 app.get("/", (_req, res) => res.type("text").send("deadman MCP - POST /mcp · dashboard at /dashboard"));
+
+// In demo mode, pre-populate the history/safety/cost views with real scenario runs so the
+// platform is fully rendered the instant it boots (deterministic; sim only).
+if (demoMode()) {
+  const { seeded } = seedDemoIncidents();
+  console.log(`[deadman] demo seed: ${seeded} incident(s) replayed through the real pipeline`);
+}
 
 app.listen(PORT, () => {
   console.log(`[deadman] MCP server on http://localhost:${PORT}/mcp`);

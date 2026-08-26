@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Allow esbuild's install script (tsx/vitest depend on its platform binary).
+allowBuilds:
+  esbuild: true

@@ -33,16 +33,16 @@ visible safety (the approval pause on destructive tools), which is the whole poi
 
 ## Layout
 
-- **`mcp/`** — the DEADMAN engine, a remote HTTP MCP server (streamable-HTTP): the tool
+- **`packages/engine/`** — the DEADMAN engine, a remote HTTP MCP server (streamable-HTTP): the tool
   surface with read/write gate annotations, blast-radius classifier, sensitive-target floor,
-  audit trail, runbook, and both cluster backends. See [`mcp/README.md`](mcp/README.md).
+  audit trail, runbook, and both cluster backends. See [`packages/engine/README.md`](packages/engine/README.md).
 - **`demo.sh`** — one-command end-to-end demo (incident → gate → approve → fix → verify).
 - **`.github/workflows/ci.yml`** — typecheck + unit tests on every push.
 
 ## Quick start
 
 ```sh
-cd mcp && npm install
+cd packages/engine && npm install
 npm test                       # 20 unit tests
 npm start                      # sim backend  -> http://localhost:9000/mcp
 # or, against a real cluster:
@@ -60,11 +60,11 @@ bash demo.sh                   # drive the full arc against TrueForge + the MCP 
 
 - **Unit** (`npm test`): tiers, sensitive-target floor, cluster sim, audit, scenario RCA,
   runbook, **adversarial** (injected-instruction refusals, frozen policy) — in CI on every push.
-- **Integration** (`mcp/scripts/smoke.mjs`): the live tool surface over MCP.
-- **End-to-end** (`mcp/scripts/e2e.mjs`): the full incident arc + safety refusals against either backend.
-- **Adversarial** (`mcp/scripts/adversarial.mjs`): prompt-injected/malicious inputs — every safety
+- **Integration** (`packages/engine/scripts/smoke.mjs`): the live tool surface over MCP.
+- **End-to-end** (`packages/engine/scripts/e2e.mjs`): the full incident arc + safety refusals against either backend.
+- **Adversarial** (`packages/engine/scripts/adversarial.mjs`): prompt-injected/malicious inputs — every safety
   control must hold. `e2e.mjs` + `adversarial.mjs` also run in CI.
-- **Chaos** (`mcp/scripts/chaos.sh oom|crashloop|imagepull`): inject a failure scenario into kind.
+- **Chaos** (`packages/engine/scripts/chaos.sh oom|crashloop|imagepull`): inject a failure scenario into kind.
 
 ## Status
 

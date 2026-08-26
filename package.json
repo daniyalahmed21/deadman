@@ -1,0 +1,13 @@
+{
+  "name": "deadman",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.0.8",
+  "scripts": {
+    "dev": "pnpm --filter @deadman/cockpit dev",
+    "engine": "pnpm --filter deadman-mcp start",
+    "test": "pnpm --filter deadman-mcp test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build"
+  }
+}
