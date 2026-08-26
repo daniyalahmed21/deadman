@@ -16,6 +16,8 @@ Progress is tracked here and checked off in the same commit that lands the work.
 - [x] Real `kind` cluster backend (kubectl) behind a swappable interface; sim stays default
 - [x] Live end-to-end on real infra: agent → gate → approved → real kubectl fix → verified
 - [x] Self-validate tool inputs (typed schemas + bounds, e.g. mib <= 65536)
+- [x] Live telemetry tools: `get_metrics` (metrics-server), `get_logs`, `get_events`, `get_deploy_history`
+- [x] RCA grounded in real working-set numbers (metrics-server); graceful OOM-signal fallback while crashlooping
 
 ## TrueForge integration
 - [x] Register the MCP server as a remote HTTP connector

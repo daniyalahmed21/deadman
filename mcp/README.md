@@ -61,7 +61,11 @@ limit; `bump_memory` to ≥512Mi resolves it. `data-0` is a healthy PVC that is 
 ## Investigation
 
 `investigate_incident` derives the root cause from **live signals** (memory limit, restart
-counts, OOMKill status) via the active backend — the diagnosis changes when the cluster does.
+counts, OOMKill status, and the **real memory working set** from metrics-server) via the
+active backend — the diagnosis changes when the cluster does. Supporting read tools:
+`get_metrics`, `get_logs`, `get_events`, `get_deploy_history`. In kind mode these hit real
+`kubectl top` / logs / events; a constantly-OOMKilling pod has no metrics window, so the RCA
+gracefully falls back to the OOMKill signal and cites real numbers once the pod runs.
 
 Optionally, Claude narrates the prose (root cause / report / summary) grounded in that same
 evidence, while the numeric fields stay deterministic:

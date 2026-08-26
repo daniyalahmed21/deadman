@@ -19,17 +19,22 @@ export function buildInvestigation(
   deployment: string,
   memLimitMib: number,
   pods: PodSignal[],
+  workingSetMib?: number,
 ): InvestigationResult {
   const oomPod = pods.find((p) => p.oomKilled);
   const maxRestarts = pods.reduce((m, p) => Math.max(m, p.restarts), 0);
+  const ws = workingSetMib && workingSetMib > 0 ? `${workingSetMib}Mi` : undefined;
 
   if (oomPod) {
-    const root_cause = `${deployment} is OOMKilled: the container memory limit (${memLimitMib}Mi) is below the workload's steady-state working set.`;
+    const root_cause = ws
+      ? `${deployment} is OOMKilled: measured memory working set (${ws}) meets or exceeds the container limit (${memLimitMib}Mi).`
+      : `${deployment} is OOMKilled: the container memory limit (${memLimitMib}Mi) is below the workload's steady-state working set.`;
     return {
       root_cause,
       evidence: [
         `pod ${oomPod.name}: ${oomPod.restarts} restarts, last state OOMKilled (exit 137)`,
         `container memory limit is ${memLimitMib}Mi`,
+        ...(ws ? [`measured memory working set: ${ws} (from metrics-server)`] : []),
         "no correlated deploy, config change, or traffic spike in the window",
       ],
       validity_score: 0.91,

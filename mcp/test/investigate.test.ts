@@ -23,6 +23,13 @@ describe("root-cause synthesis", () => {
     expect(r.validity_score).toBeLessThan(0.8);
   });
 
+  it("cites the measured working set when metrics are available", () => {
+    const r = buildInvestigation("checkout", 256, [{ name: "checkout-0", restarts: 7, oomKilled: true }], 451);
+    expect(r.root_cause).toMatch(/451Mi/);
+    expect(r.evidence.join(" ")).toMatch(/working set: 451Mi/i);
+    expect(r.evidence.join(" ")).toMatch(/metrics-server/i);
+  });
+
   it("treats a healthy deployment as likely noise", () => {
     const r = buildInvestigation("checkout", 512, [
       { name: "checkout-0", restarts: 0, oomKilled: false },
