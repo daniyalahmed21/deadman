@@ -35,6 +35,11 @@ line(`  validity_score: ${inv.validity_score}  is_noise: ${inv.is_noise}`);
 assert(inv.is_noise === false, "expected a real incident (is_noise=false) in the failing state");
 assert(inv.validity_score >= 0.8, "expected high validity in the failing state");
 
+// 2a1) Triage — cheap first pass.
+const tri = JSON.parse((await call("triage", { alert: "checkout OOMKilled, pods restarting" })).text);
+line(`triage → severity=${tri.severity} is_noise=${tri.is_noise} investigate=${tri.recommend_investigate}`);
+assert(tri.is_noise === false && tri.severity === "critical", "expected critical triage for an OOMKill alert");
+
 // 2a2) Live telemetry tools.
 const met = JSON.parse((await call("get_metrics", { service: "checkout" })).text);
 line(`get_metrics → working set ${met.workingSetMib}Mi, cpu ${met.cpuMillis}m`);
@@ -60,6 +65,12 @@ line(`\ndelete_pvc(orders-db-pvc) [protected]:`);
 const refused = await call("delete_pvc", { target: "orders-db-pvc" });
 line(`  ${refused.text}`);
 assert(refused.isError === true, "expected delete_pvc on a protected target to be refused");
+
+// 4b) New gated actions: scale works; draining the only node is refused (HARDLINE).
+line(`\nscale_deployment(checkout, 2): ${(await call("scale_deployment", { target: "checkout", replicas: 2 })).text}`);
+const drain = await call("drain_node", { node: "deadman-control-plane" });
+line(`drain_node(only node): ${drain.text}`);
+assert(drain.isError === true && /HARDLINE/i.test(drain.text), "expected drain of the only node to be refused (HARDLINE)");
 
 // 5) Audit trail: every mutating call (executed or refused) is recorded.
 const auditLog = JSON.parse((await call("get_audit_log")).text);

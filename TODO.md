@@ -38,6 +38,13 @@ Progress is tracked here and checked off in the same commit that lands the work.
       — sandbox provider configured, agent has sandbox+skill, session shows `sandbox.created`
       with 0 errors. (Daytona snapshot build 502s transiently; setup-daytona.sh retries.)
 
+## Agent teams & remediation surface
+- [x] `triage` first-pass tool (severity/noise, fail-safe to investigate)
+- [x] Expanded gated remediation: `scale_deployment`, `cordon_node`, `drain_node`
+- [x] Node sensitive-target floor: draining the only schedulable node → HARDLINE refused (sim + kind)
+- [x] 4-phase team workflow (triage → investigate → remediate → verify) in the agent spec
+- [ ] Per-subagent tool scoping demoed live in TrueForge (dynamic_sub_agents already enabled)
+
 ## Safety depth
 - [x] Sensitive-target floor: engine refuses destructive ops on protected targets (defense in depth)
 - [x] Freeze safety policy at startup (HARDLINE + protected patterns frozen at import)

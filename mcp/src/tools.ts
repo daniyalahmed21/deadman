@@ -20,6 +20,7 @@ import * as audit from "./audit.js";
 import { backend } from "./backend.js";
 import { runbookFor } from "./runbook.js";
 import { narrate } from "./llm.js";
+import { triageAlert } from "./triage.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -88,6 +89,18 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ service }) => json(serviceHealthFixture(service)),
+  );
+
+  server.registerTool(
+    "triage",
+    {
+      title: "Triage alert",
+      description:
+        "Cheap first-pass: classify an alert's severity (critical/warning/info) and whether it's noise, before the expensive investigation. Fail-safe: unclassified alerts are treated as real. Read-only.",
+      inputSchema: { alert: z.string().describe("Raw alert payload or description") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ alert }) => json(triageAlert(alert)),
   );
 
   server.registerTool(
@@ -345,5 +358,64 @@ export function registerDeadmanTools(server: McpServer): void {
         () => backend.scaleToZero(target),
         () => backend.deploymentReplicas(target),
       ),
+  );
+
+  server.registerTool(
+    "scale_deployment",
+    {
+      title: "Scale deployment",
+      description: "Scale a deployment to a target replica count. Prod capacity change — GATED.",
+      inputSchema: {
+        target: z.string().describe("Deployment name"),
+        replicas: z.number().int().min(0).max(100).describe("Target replica count"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ target, replicas }) =>
+      guardedMutation(
+        "scale_deployment",
+        target,
+        backend.deploymentReplicas(target),
+        () => backend.scaleDeployment(target, replicas),
+        () => backend.deploymentReplicas(target),
+      ),
+  );
+
+  server.registerTool(
+    "cordon_node",
+    {
+      title: "Cordon node",
+      description: "Mark a node unschedulable (reversible via uncordon). GATED.",
+      inputSchema: { node: z.string().describe("Node name") },
+      annotations: { destructiveHint: true },
+    },
+    async ({ node }) => guardedMutation("cordon_node", node, undefined, () => backend.cordonNode(node), () => undefined),
+  );
+
+  server.registerTool(
+    "drain_node",
+    {
+      title: "Drain node",
+      description:
+        "Evict all pods from a node. HARDLINE-guarded: draining the only schedulable node takes the whole cluster down and is refused outright. Otherwise GATED.",
+      inputSchema: { node: z.string().describe("Node name") },
+      annotations: { destructiveHint: true },
+    },
+    async ({ node }) => {
+      // Sensitive-target floor, node edition: never drain the last schedulable node.
+      if (backend.nodeCount() <= 1) {
+        audit.record({
+          action: "drain_node",
+          target: node,
+          tier: "HARDLINE",
+          outcome: "refused: draining the only schedulable node would take the entire cluster down",
+          isError: true,
+        });
+        return err(
+          `[REFUSED] HARDLINE: draining ${node} is the only schedulable node — this would take the entire cluster down. A license to act has limits.`,
+        );
+      }
+      return guardedMutation("drain_node", node, undefined, () => backend.drainNode(node), () => undefined);
+    },
   );
 }
