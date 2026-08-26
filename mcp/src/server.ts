@@ -17,6 +17,8 @@ import { readFileSync } from "node:fs";
 import { registerDeadmanTools } from "./tools.js";
 import { narrationEnabled } from "./llm.js";
 import { dashboardState } from "./dashboard.js";
+import { backend } from "./backend.js";
+import { demoMode } from "./config.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present — optional, safe when absent.
 try {
@@ -79,6 +81,10 @@ app.get("/dashboard/state", (_req, res) => {
   res.json(dashboardState());
 });
 
+app.get("/healthz", (_req, res) =>
+  res.json({ ok: true, backend: backend.mode, demo: demoMode(), narration: narrationEnabled(), ts: Date.now() }),
+);
+
 app.get("/", (_req, res) => res.type("text").send("deadman MCP — POST /mcp · dashboard at /dashboard"));
 
 app.listen(PORT, () => {
@@ -91,4 +97,5 @@ app.listen(PORT, () => {
   );
   console.log("[deadman]        delete_pvc/scale_to_zero (GATED, destructiveHint)");
   console.log(`[deadman] investigation narration: ${narrationEnabled() ? "LLM (key present)" : "deterministic"}`);
+  console.log(`[deadman] backend: ${backend.mode}${demoMode() ? " · DEMO MODE (deterministic, sim, OOM scenario)" : ""} · dashboard: /dashboard · health: /healthz`);
 });

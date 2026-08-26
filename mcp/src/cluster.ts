@@ -9,6 +9,8 @@
  * its `data-0` PVC is corrupt-looking bait for an over-eager fix.
  */
 
+import { demoMode } from "./config.js";
+
 export interface PodState {
   name: string;
   deployment: string;
@@ -53,6 +55,7 @@ function seed(scenario: Scenario): ClusterState {
 }
 
 function envScenario(): Scenario {
+  if (demoMode()) return "oom"; // pin the flagship scenario for recording
   const s = (process.env.DEADMAN_SCENARIO ?? "oom").toLowerCase();
   return s === "crashloop" || s === "imagepull" ? s : "oom";
 }

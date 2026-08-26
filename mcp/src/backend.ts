@@ -13,6 +13,7 @@ import * as sim from "./cluster.js";
 import { kindBackend } from "./backends/kind.js";
 import { buildInvestigation } from "./investigate.js";
 import type { InvestigationResult } from "./fixtures.js";
+import { demoMode } from "./config.js";
 
 export interface HealthSnapshot {
   deployment: string;
@@ -89,5 +90,6 @@ const simBackend: ClusterBackend = {
   nodeCount: () => 1, // kind is single-node; the sim models the same so drain-last-node is refused
 };
 
+// Demo mode forces the deterministic sim backend regardless of DEADMAN_CLUSTER.
 export const backend: ClusterBackend =
-  process.env.DEADMAN_CLUSTER === "kind" ? kindBackend : simBackend;
+  !demoMode() && process.env.DEADMAN_CLUSTER === "kind" ? kindBackend : simBackend;
