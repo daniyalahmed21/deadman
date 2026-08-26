@@ -22,6 +22,7 @@ import { runbookFor } from "./runbook.js";
 import { narrate } from "./llm.js";
 import { triageAlert } from "./triage.js";
 import * as incident from "./incident.js";
+import * as incidents from "./incidents.js";
 import { buildPostmortem } from "./postmortem.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
@@ -78,8 +79,10 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ alert, service }) => {
       const svc = service ?? "checkout";
-      const result = await narrate(backend.investigate(svc), alert ?? "");
+      const result = await narrate(backend.investigate(svc), alert ?? "", svc);
       incident.setInvestigation(svc, result);
+      const snap = incident.getInvestigation();
+      if (snap) incidents.openIncident(snap, alert, audit.all().length, backend.serviceHealth(svc).memLimitMib);
       return json(result);
     },
   );
@@ -244,6 +247,7 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ target }) => {
       const health = backend.serviceHealth(target);
+      incidents.closeIncident(target, health.healthy, audit.all(), health.memLimitMib);
       return json({ ...health, resolved: health.healthy });
     },
   );

@@ -66,19 +66,51 @@ export interface IncidentSummary {
   startedAt: number;
   resolvedAt?: number;
   resolved: boolean;
+  isNoise: boolean;
   rootCause?: string;
+  validity: number;
   actions: number;
   refusals: number;
 }
 
-/** Cost/telemetry for the current session (server-computed). */
+/** Full incident record with the action timeline, for the history detail + replay view. */
+export interface IncidentDetail extends IncidentSummary {
+  alert?: string;
+  evidence: string[];
+  memLimitBefore?: number;
+  memLimitAfter?: number;
+  timeline: AuditEntry[];
+}
+
+/** One row of the frozen blast-radius policy, for the Safety view. */
+export interface PolicyTier {
+  tier: Tier;
+  behavior: string;
+  tools: string[];
+}
+
+/** The engine's safety policy (classifier tiers + hardline patterns), server-emitted. */
+export interface Policy {
+  tiers: PolicyTier[];
+  hardlinePatterns: string[];
+}
+
+/** LLM cost/telemetry accumulated by the engine. Honest zeros in deterministic mode. */
 export interface CostReport {
   model: string;
-  turns: number;
+  narration: boolean;
+  investigations: number;
+  llmCalls: number;
   inputTokens: number;
   outputTokens: number;
-  cacheReadTokens: number;
-  totalUsd: number;
-  cacheHitPct: number;
-  savedUsd: number;
+  usd: number;
+  priceInPerMTok: number;
+  priceOutPerMTok: number;
+  perIncident: {
+    id: string;
+    service: string;
+    inputTokens: number;
+    outputTokens: number;
+    usd: number;
+  }[];
 }

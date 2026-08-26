@@ -52,3 +52,15 @@ export function classifyTool(toolName: string): Tier {
   if (GATED_TOOLS.has(toolName)) return "GATED";
   return "GATED"; // fail-closed
 }
+
+/** The frozen blast-radius policy, for the Safety view. */
+export function policy() {
+  return {
+    tiers: [
+      { tier: "SAFE" as Tier, behavior: "Auto-run (reversible, low blast radius)", tools: [...SAFE_TOOLS] },
+      { tier: "GATED" as Tier, behavior: "Human approval in TrueForge (destructive, irreversible)", tools: [...GATED_TOOLS] },
+      { tier: "HARDLINE" as Tier, behavior: "Refused outright (no recovery path, never callable)", tools: ["delete_primary_database", "drain_last_node", "delete_namespace"] },
+    ],
+    hardlinePatterns: HARDLINE_PATTERNS.map((re) => re.source),
+  };
+}

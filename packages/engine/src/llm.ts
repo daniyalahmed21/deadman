@@ -15,6 +15,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { InvestigationResult } from "./fixtures.js";
 import { demoMode } from "./config.js";
+import { recordInvestigation, recordUsage } from "./cost.js";
 
 const MODEL = process.env.DEADMAN_LLM_MODEL ?? "claude-opus-4-8";
 
@@ -43,7 +44,8 @@ export function narrationEnabled(): boolean {
 }
 
 /** Rewrite the prose fields of an investigation via Claude; fall back to `base` on any issue. */
-export async function narrate(base: InvestigationResult, alert: string): Promise<InvestigationResult> {
+export async function narrate(base: InvestigationResult, alert: string, service = "checkout"): Promise<InvestigationResult> {
+  recordInvestigation();
   const c = client();
   if (!c) return base;
   try {
@@ -67,6 +69,7 @@ export async function narrate(base: InvestigationResult, alert: string): Promise
       ],
       output_config: { format: { type: "json_schema", schema: SCHEMA } },
     });
+    if (res.usage) recordUsage(service, res.usage.input_tokens ?? 0, res.usage.output_tokens ?? 0);
     if (res.stop_reason === "refusal") return base;
     const block = res.content.find((b) => b.type === "text");
     if (!block || block.type !== "text") return base;
