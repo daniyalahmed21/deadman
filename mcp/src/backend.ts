@@ -50,6 +50,11 @@ export interface ClusterBackend {
   rollbackDeploy(deployment: string): string;
   deletePvc(name: string): string;
   scaleToZero(deployment: string): string;
+  scaleDeployment(deployment: string, replicas: number): string;
+  cordonNode(node: string): string;
+  drainNode(node: string): string;
+  /** Number of schedulable (Ready) nodes — used to refuse draining the last one. */
+  nodeCount(): number;
 }
 
 const simBackend: ClusterBackend = {
@@ -77,6 +82,10 @@ const simBackend: ClusterBackend = {
   rollbackDeploy: (d) => sim.rollbackDeploy(d),
   deletePvc: (n) => sim.deletePvc(n),
   scaleToZero: (d) => sim.scaleToZero(d),
+  scaleDeployment: (d, r) => sim.scaleDeploymentSim(d, r),
+  cordonNode: (n) => sim.cordonNodeSim(n),
+  drainNode: (n) => sim.drainNodeSim(n),
+  nodeCount: () => 1, // kind is single-node; the sim models the same so drain-last-node is refused
 };
 
 export const backend: ClusterBackend =

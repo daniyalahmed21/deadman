@@ -36,6 +36,16 @@ function nsTry(args: string[]): { ok: boolean; out: string } {
   }
 }
 
+/** Cluster-scoped (no namespace) kubectl, for node operations. */
+function runTry(args: string[]): { ok: boolean; out: string } {
+  try {
+    return { ok: true, out: run(args) };
+  } catch (e) {
+    const err = e as { stderr?: string; stdout?: string; message?: string };
+    return { ok: false, out: String(err.stderr || err.stdout || err.message || "").trim() };
+  }
+}
+
 /** Parse a k8s memory quantity ("256Mi", "1Gi", "512M") to MiB. */
 function parseMemMib(s: string): number {
   const m = s.match(/^(\d+)(Gi|Mi|G|M)?$/);
@@ -193,5 +203,26 @@ export const kindBackend: ClusterBackend = {
   scaleToZero(deployment) {
     ns(["scale", `deploy/${deployment}`, "--replicas=0"]);
     return `scaled ${deployment} to 0 replicas (service DOWN)`;
+  },
+  scaleDeployment(deployment, replicas) {
+    ns(["scale", `deploy/${deployment}`, `--replicas=${replicas}`]);
+    return `scaled ${deployment} to ${replicas} replicas`;
+  },
+  cordonNode(node) {
+    run(["cordon", node]);
+    return `cordoned ${node} (unschedulable; reversible via uncordon)`;
+  },
+  drainNode(node) {
+    run(["drain", node, "--ignore-daemonsets", "--delete-emptydir-data", "--force"]);
+    return `drained ${node} (evicted all pods)`;
+  },
+  nodeCount() {
+    const r = runTry([
+      "get",
+      "nodes",
+      "-o",
+      'jsonpath={range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\\n"}{end}',
+    ]);
+    return r.ok ? r.out.split("\n").filter((l) => l.trim() === "True").length || 1 : 1;
   },
 };

@@ -176,3 +176,22 @@ export function scaleToZero(deployment: string): string {
   dep.healthy = false;
   return `scaled ${deployment} to 0 replicas (service DOWN)`;
 }
+
+/** GATED: scale a deployment to an arbitrary replica count. */
+export function scaleDeploymentSim(deployment: string, replicas: number): string {
+  const dep = state.deployments[deployment];
+  if (!dep) return `deployment ${deployment} not found`;
+  dep.replicas = replicas;
+  dep.healthy = replicas > 0 && dep.memLimitMib >= 512;
+  return `scaled ${deployment} to ${replicas} replicas`;
+}
+
+/** GATED (reversible): mark a node unschedulable. */
+export function cordonNodeSim(node: string): string {
+  return `cordoned ${node} (unschedulable; reversible via uncordon)`;
+}
+
+/** GATED: drain a node (only reached when node_count > 1; on a single node it is refused). */
+export function drainNodeSim(node: string): string {
+  return `drained ${node} (evicted all pods)`;
+}

@@ -32,7 +32,15 @@ const SAFE_TOOLS = Object.freeze(new Set(["restart_pod"]));
 
 /** Tools that mutate state destructively/irreversibly → GATED (approval). */
 const GATED_TOOLS = Object.freeze(
-  new Set(["bump_memory", "rollback_deploy", "delete_pvc", "scale_to_zero"]),
+  new Set([
+    "bump_memory",
+    "rollback_deploy",
+    "delete_pvc",
+    "scale_to_zero",
+    "scale_deployment",
+    "cordon_node",
+    "drain_node",
+  ]),
 );
 
 /**
