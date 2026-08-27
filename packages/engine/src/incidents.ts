@@ -33,40 +33,35 @@ interface IncidentRecord {
 }
 
 const records: IncidentRecord[] = [];
+let seq = 0;
 
-/** Open (or refresh) the record for the current investigation. */
+/**
+ * Open a record for the current investigation. Each investigation is its own incident with a
+ * unique monotonic id, so two incidents opened in the same millisecond never collide or merge.
+ */
 export function openIncident(
   inv: InvestigationSnapshot,
   alert: string | undefined,
   auditLen: number,
   memLimitBefore?: number,
 ): IncidentRecord {
-  const id = `INC-${inv.deployment}-${inv.at}`;
-  let rec = records.find((r) => r.id === id);
-  if (!rec) {
-    rec = {
-      id,
-      service: inv.deployment,
-      startedAt: inv.at,
-      resolved: false,
-      isNoise: inv.is_noise,
-      rootCause: inv.root_cause,
-      validity: inv.validity_score,
-      alert,
-      evidence: inv.evidence,
-      memLimitBefore,
-      timeline: [],
-      auditBaseline: auditLen,
-      closed: false,
-    };
-    records.push(rec);
-  } else {
-    rec.rootCause = inv.root_cause;
-    rec.isNoise = inv.is_noise;
-    rec.validity = inv.validity_score;
-    rec.evidence = inv.evidence;
-    if (alert) rec.alert = alert;
-  }
+  seq += 1;
+  const rec: IncidentRecord = {
+    id: `INC-${inv.deployment}-${seq}`,
+    service: inv.deployment,
+    startedAt: inv.at,
+    resolved: false,
+    isNoise: inv.is_noise,
+    rootCause: inv.root_cause,
+    validity: inv.validity_score,
+    alert,
+    evidence: inv.evidence,
+    memLimitBefore,
+    timeline: [],
+    auditBaseline: auditLen,
+    closed: false,
+  };
+  records.push(rec);
   return rec;
 }
 
@@ -119,4 +114,5 @@ export function allIncidents(): IncidentDetail[] {
 
 export function resetIncidents(): void {
   records.length = 0;
+  seq = 0;
 }

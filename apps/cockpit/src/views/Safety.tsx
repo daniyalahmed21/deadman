@@ -64,7 +64,7 @@ export function Safety() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.6fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.6fr] [&>*]:min-w-0">
         {/* Decision distribution */}
         <Card>
           <CardHeader>
@@ -84,7 +84,7 @@ export function Safety() {
         </Card>
 
         {/* Refusals - the second-layer floor in action */}
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Refused actions</CardTitle>
           </CardHeader>

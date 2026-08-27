@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
-import { Activity, Cpu, Gauge as GaugeIcon, ShieldX } from "lucide-react";
+import { Activity, Check, Cpu, Gauge as GaugeIcon, ShieldX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill, StatusPill, TierBadge } from "@/components/ui/badge";
+import { EvidenceList } from "@/components/ui/evidence";
 import { PageHeader } from "@/components/ui/page";
 import { StatBlock } from "@/components/ui/statblock";
 import { Gauge } from "@/components/ui/gauge";
 import type { DashboardFeed } from "@/lib/useDashboard";
-import { num } from "@/lib/utils";
+import { cn, num } from "@/lib/utils";
 import type { Phase } from "@deadman/shared";
 
 const PHASES: { key: Phase; label: string }[] = [
@@ -76,105 +77,135 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
         ]}
       />
 
-      {/* Phase strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {PHASES.map((p) => {
-          const isActive = p.key === active;
-          const isDone = done[p.key];
-          return (
-            <div
-              key={p.key}
-              className={[
-                "rounded-xl border bg-card px-4 py-2.5 text-center text-xs font-medium uppercase tracking-wider transition-colors",
-                isActive ? "border-foreground text-foreground" : isDone ? "text-success" : "text-muted-foreground",
-              ].join(" ")}
-            >
-              {p.label}
-            </div>
-          );
-        })}
-      </div>
-
+      {/* Asymmetric layout: wide narrative + activity column, right rail of live vitals + progress */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Root cause */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Root cause</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {inv ? (
-              <>
-                <p className="text-sm leading-relaxed">{inv.root_cause}</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {inv.is_noise ? (
-                    <Pill className="bg-muted text-muted-foreground">Noise</Pill>
-                  ) : (
-                    <Pill className="bg-destructive/12 text-destructive">Real incident</Pill>
-                  )}
-                  <span className="text-xs tabular-nums text-muted-foreground">validity {num(inv.validity_score)}</span>
+        {/* Left column (wide) */}
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          {/* Root cause */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Root cause</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {inv ? (
+                <>
+                  <p className="text-[15px] leading-relaxed">{inv.root_cause}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {inv.is_noise ? (
+                      <Pill className="bg-muted text-muted-foreground">Noise</Pill>
+                    ) : (
+                      <Pill className="bg-destructive/12 text-destructive">Real incident</Pill>
+                    )}
+                    <span className="tabular-nums">validity {num(inv.validity_score)}</span>
+                  </div>
+                  <div className="border-t pt-4">
+                    <EvidenceList items={inv.evidence} />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm italic text-muted-foreground">Awaiting investigation</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Action log */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Action log</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {audit.length === 0 ? (
+                <p className="px-5 pb-5 text-sm italic text-muted-foreground">No actions yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[360px] text-sm">
+                    <tbody>
+                      {audit.map((e) => (
+                        <tr key={e.seq} className="border-t first:border-t-0">
+                          <td className="py-3 pl-5 pr-3">
+                            <TierBadge tier={e.tier} />
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className="font-medium">{e.action}</span>{" "}
+                            <span className="text-muted-foreground">{e.target}</span>
+                          </td>
+                          <td className="py-3 pl-3 pr-5 text-right">
+                            <StatusPill ok={!e.isError} okLabel="Done" badLabel="Refused" />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <ul className="space-y-1.5 border-t pt-3 text-sm text-muted-foreground">
-                  {inv.evidence.slice(0, 3).map((e, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-success">-</span>
-                      <span>{e}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="text-sm italic text-muted-foreground">Awaiting investigation</p>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Memory gauge */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Memory pressure</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Gauge pct={memPct} caption={`${num(ws)} / ${num(limit)} Mi`} />
-            <p className="text-center text-[11px] uppercase tracking-wide text-muted-foreground">working set vs limit</p>
-            <div className="grid grid-cols-2 gap-2 border-t pt-3">
-              <MiniStat label="Replicas" value={num(state?.health.replicas ?? 0)} />
-              <MiniStat label="CPU" value={`${num(state?.metrics.cpuMillis ?? 0)}m`} />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Action log */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Action log</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {audit.length === 0 ? (
-              <p className="px-5 pb-5 text-sm italic text-muted-foreground">No actions yet</p>
-            ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full min-w-[360px] text-sm">
-                <tbody>
-                  {audit.map((e) => (
-                    <tr key={e.seq} className="border-t first:border-t-0">
-                      <td className="py-3 pl-5 pr-3">
-                        <TierBadge tier={e.tier} />
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="font-medium">{e.action}</span>{" "}
-                        <span className="text-muted-foreground">{e.target}</span>
-                      </td>
-                      <td className="py-3 pl-3 pr-5 text-right">
-                        <StatusPill ok={!e.isError} okLabel="Done" badLabel="Refused" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Right rail: live vitals + investigation progress */}
+        <div className="min-w-0 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Memory pressure</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Gauge pct={memPct} caption={`${num(ws)} / ${num(limit)} Mi`} />
+              <p className="text-center text-[11px] uppercase tracking-wide text-muted-foreground">working set vs limit</p>
+              <div className="grid grid-cols-2 gap-2 border-t pt-3">
+                <MiniStat label="Replicas" value={num(state?.health.replicas ?? 0)} />
+                <MiniStat label="CPU" value={`${num(state?.metrics.cpuMillis ?? 0)}m`} />
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Investigation</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-1">
+              <ol className="relative">
+                {PHASES.map((p, i) => {
+                  const isActive = p.key === active;
+                  const isDone = done[p.key];
+                  const isLast = i === PHASES.length - 1;
+                  return (
+                    <li key={p.key} className="flex gap-3 pb-4 last:pb-0">
+                      <div className="relative flex flex-col items-center">
+                        <span
+                          className={cn(
+                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                            isDone
+                              ? "bg-success/15 text-success"
+                              : isActive
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {isDone ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                        </span>
+                        {!isLast && (
+                          <span className={cn("mt-1 w-px flex-1", isDone ? "bg-success/40" : "bg-border")} />
+                        )}
+                      </div>
+                      <div className="flex flex-1 items-center justify-between pt-0.5">
+                        <span
+                          className={cn(
+                            "text-sm",
+                            isActive ? "font-medium text-foreground" : isDone ? "text-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {p.label}
+                        </span>
+                        {isActive && !resolved && <span className="text-[11px] text-primary">in progress</span>}
+                        {isDone && <span className="text-[11px] text-success">done</span>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
