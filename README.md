@@ -17,17 +17,35 @@ Dry-run first, closed-loop verify after, full audit trail.
 Built to run on [TrueForge](https://github.com/truefoundry/trueforge) — the harness owns the
 visible safety (the approval pause on destructive tools), which is the whole point.
 
+## Architecture
+
+An alert enters the TrueForge harness, which calls the DEADMAN engine over MCP. The engine
+investigates production, routes every write through a blast-radius approval gate, streams each
+step to a live cockpit, and closes the loop by verifying the fix.
+
+![DEADMAN architecture](docs/architecture.svg)
+
+*High-level flow. For the engine internals — classifier → approval gate → sensitive-target
+guard, the auto-rollback watchdog, and the audit → event-stream → cockpit path — see the
+[detailed architecture](docs/architecture-detailed.svg).*
+
 ## What works today
 
 - **Investigate** — grounded root-cause analysis from live signals (memory limit, restart
   counts, OOMKill status), not a fixture. The diagnosis changes when the cluster changes.
 - **Graduated autonomy** — safe fixes auto-run; destructive ones pause at TrueForge's
   approval gate (`destructiveHint`); catastrophic ones are refused outright.
+- **Auto-rollback watchdog** — after a remediation, DEADMAN watches the target and, if the fix
+  doesn't hold, auto-reverts and escalates. Reversibility is a first-class primitive.
+- **Prompt-injection defense** — an alert that instructs a destructive action is flagged and
+  ignored; alerts are treated as data, never commands. The real incident is still fixed.
+- **Live cockpit** — a React observability platform (overview, incidents + replay, safety,
+  cost) with a real-time SSE feed of every step the agent takes.
 - **Two cluster backends** — a deterministic in-memory `sim` (default) and a real `kind`
   cluster driven by `kubectl` (`DEADMAN_CLUSTER=kind`). Same tools either way.
-- **Runbook-aware** — `get_runbook` supplies the decision rules the agent follows.
 - **Defense in depth** — a sensitive-target floor refuses destructive ops on protected
-  resources even if approved; every mutating call is recorded in an audit trail.
+  resources even if approved; every mutating call is recorded in an append-only audit trail.
+- **Runbook-aware** — `get_runbook` supplies the decision rules the agent follows.
 - **Verified live end-to-end** — agent → approval gate → real `kubectl` → cluster fixed
   (256Mi→512Mi, pod Running), confirmed by independent `kubectl`. Sessions persist (resume).
 
