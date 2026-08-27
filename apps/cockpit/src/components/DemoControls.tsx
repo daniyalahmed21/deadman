@@ -29,6 +29,7 @@ export function DemoControls() {
 
   const run = (scenario: Scenario) => trigger(`/dashboard/demo-run?scenario=${scenario}`, 9000);
   const runBadFix = () => trigger("/dashboard/demo-badfix", 13000);
+  const runInjection = () => trigger("/dashboard/demo-injection", 12000);
 
   return (
     <div className="relative">
@@ -56,6 +57,9 @@ export function DemoControls() {
           <div className="border-t px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Trust</div>
           <button onClick={runBadFix} className="block w-full px-3 py-2 text-left text-sm hover:bg-muted">
             Bad fix &rarr; auto-rollback
+          </button>
+          <button onClick={runInjection} className="block w-full px-3 py-2 text-left text-sm hover:bg-muted">
+            Prompt injection &rarr; refused
           </button>
         </div>
       )}

@@ -24,7 +24,7 @@ import { costReport } from "./cost.js";
 import { policy } from "./classifier.js";
 import { seedDemoIncidents } from "./seed.js";
 import { recent, subscribe } from "./events.js";
-import { injectFailure, runDemo, runBadFixDemo, demoRunning } from "./demo.js";
+import { injectFailure, runDemo, runBadFixDemo, runInjectionDemo, demoRunning } from "./demo.js";
 import type { Scenario } from "./cluster.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
@@ -160,6 +160,15 @@ app.post("/dashboard/demo-badfix", (_req, res) => {
   if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
   void runBadFixDemo();
   res.json({ started: true, mode: "badfix" });
+});
+
+// Injection demo (demo only): a prompt-injected alert - flagged, refused, real incident still fixed.
+app.post("/dashboard/demo-injection", (_req, res) => {
+  cors(res);
+  if (!demoMode()) return void res.status(403).json({ started: false, reason: "disabled outside demo mode" });
+  if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
+  void runInjectionDemo();
+  res.json({ started: true, mode: "injection" });
 });
 
 app.get("/healthz", (_req, res) =>
