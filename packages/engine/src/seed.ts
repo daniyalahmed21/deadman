@@ -13,27 +13,10 @@ import { backend } from "./backend.js";
 import * as incident from "./incident.js";
 import * as incidents from "./incidents.js";
 import * as audit from "./audit.js";
-import { classifyTool } from "./classifier.js";
-import { guardDestructive } from "./guard.js";
 import { recordInvestigation, resetCost } from "./cost.js";
+import { safeAction, gatedAction } from "./remediation.js";
 
 const SERVICE = "checkout";
-
-/** SAFE mutation: audited, never gated. */
-function safeAction(tool: string, target: string, run: () => string): void {
-  audit.record({ action: tool, target, tier: classifyTool(tool), outcome: run(), isError: false });
-}
-
-/** GATED mutation through the sensitive-target floor; a refusal is audited and never mutates. */
-function gatedAction(tool: string, target: string, run: () => string): void {
-  const tier = classifyTool(tool);
-  const verdict = guardDestructive(tool, target);
-  if (!verdict.allowed) {
-    audit.record({ action: tool, target, tier, outcome: verdict.reason ?? "refused", isError: true });
-    return;
-  }
-  audit.record({ action: tool, target, tier, outcome: run(), isError: false });
-}
 
 interface ScenarioPlan {
   scenario: Scenario;

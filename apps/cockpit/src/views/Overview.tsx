@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 import { Activity, Check, Cpu, Gauge as GaugeIcon, ShieldX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pill, StatusPill, TierBadge } from "@/components/ui/badge";
+import { Pill, StatusPill } from "@/components/ui/badge";
 import { EvidenceList } from "@/components/ui/evidence";
 import { PageHeader } from "@/components/ui/page";
 import { StatBlock } from "@/components/ui/statblock";
 import { Gauge } from "@/components/ui/gauge";
+import { LiveFeed } from "@/components/LiveFeed";
+import { DemoControls } from "@/components/DemoControls";
 import type { DashboardFeed } from "@/lib/useDashboard";
+import { useEventStream } from "@/lib/useEventStream";
 import { cn, num } from "@/lib/utils";
 import type { Phase } from "@deadman/shared";
 
@@ -19,6 +22,7 @@ const PHASES: { key: Phase; label: string }[] = [
 
 export function Overview({ feed }: { feed: DashboardFeed }) {
   const { state, online } = feed;
+  const events = useEventStream();
 
   const inv = state?.investigation ?? null;
   const audit = state?.audit ?? [];
@@ -43,7 +47,12 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
       <PageHeader
         title="Overview"
         subtitle={state ? `${state.service} · ${state.mode} backend` : "connecting"}
-        actions={<StatusPill ok={resolved} okLabel="Resolved" badLabel={online ? "Firing" : "Offline"} />}
+        actions={
+          <div className="flex items-center gap-3">
+            <StatusPill ok={resolved} okLabel="Resolved" badLabel={online ? "Firing" : "Offline"} />
+            <DemoControls />
+          </div>
+        }
       />
 
       <StatBlock
@@ -108,36 +117,16 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
             </CardContent>
           </Card>
 
-          {/* Action log */}
+          {/* Live activity (event stream) */}
           <Card>
-            <CardHeader>
-              <CardTitle>Action log</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Live activity</CardTitle>
+              <span className={cn("text-[11px] font-medium", online ? "text-success" : "text-muted-foreground")}>
+                {online ? "streaming" : "offline"}
+              </span>
             </CardHeader>
             <CardContent className="p-0">
-              {audit.length === 0 ? (
-                <p className="px-5 pb-5 text-sm italic text-muted-foreground">No actions yet</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[360px] text-sm">
-                    <tbody>
-                      {audit.map((e) => (
-                        <tr key={e.seq} className="border-t first:border-t-0">
-                          <td className="py-3 pl-5 pr-3">
-                            <TierBadge tier={e.tier} />
-                          </td>
-                          <td className="px-3 py-3">
-                            <span className="font-medium">{e.action}</span>{" "}
-                            <span className="text-muted-foreground">{e.target}</span>
-                          </td>
-                          <td className="py-3 pl-3 pr-5 text-right">
-                            <StatusPill ok={!e.isError} okLabel="Done" badLabel="Refused" />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <LiveFeed events={events} />
             </CardContent>
           </Card>
         </div>

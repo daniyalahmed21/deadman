@@ -23,6 +23,9 @@ import { allIncidents } from "./incidents.js";
 import { costReport } from "./cost.js";
 import { policy } from "./classifier.js";
 import { seedDemoIncidents } from "./seed.js";
+import { recent, subscribe } from "./events.js";
+import { injectFailure, runDemo, demoRunning } from "./demo.js";
+import type { Scenario } from "./cluster.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
 try {
@@ -97,6 +100,26 @@ app.get("/dashboard/policy", (_req, res) => {
   cors(res);
   res.json(policy());
 });
+
+// Live agent-event stream (SSE). Replays recent history, then streams new events.
+app.get("/dashboard/stream", (req, res) => {
+  cors(res);
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no", // disable proxy buffering so events flush immediately
+  });
+  res.flushHeaders?.();
+  const send = (e: unknown) => res.write(`data: ${JSON.stringify(e)}\n\n`);
+  recent().forEach(send);
+  const keepAlive = setInterval(() => res.write(": ping\n\n"), 15000);
+  const unsubscribe = subscribe(send);
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    unsubscribe();
+  });
+});
 app.get("/dashboard/seed-demo", (_req, res) => {
   cors(res);
   // Seeding wipes and replays the demo stores; refuse outside demo mode so a live audit
@@ -106,6 +129,28 @@ app.get("/dashboard/seed-demo", (_req, res) => {
     return;
   }
   res.json(seedDemoIncidents());
+});
+
+const SCENARIOS: readonly Scenario[] = ["oom", "crashloop", "imagepull"];
+const parseScenario = (v: unknown): Scenario => (SCENARIOS.includes(v as Scenario) ? (v as Scenario) : "oom");
+
+// Inject a failure (demo only): resets the sim to a failing scenario, emits an alert event.
+app.post("/dashboard/chaos", (req, res) => {
+  cors(res);
+  if (!demoMode()) return void res.status(403).json({ ok: false, reason: "disabled outside demo mode" });
+  const scenario = parseScenario(req.body?.scenario ?? req.query.scenario);
+  injectFailure(scenario);
+  res.json({ ok: true, scenario });
+});
+
+// Drive the full autonomous cycle to resolution (demo only), streaming events as it goes.
+app.post("/dashboard/demo-run", (req, res) => {
+  cors(res);
+  if (!demoMode()) return void res.status(403).json({ started: false, reason: "disabled outside demo mode" });
+  if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
+  const scenario = parseScenario(req.body?.scenario ?? req.query.scenario);
+  void runDemo(scenario); // fire-and-forget; the cockpit watches the SSE stream
+  res.json({ started: true, scenario });
 });
 
 app.get("/healthz", (_req, res) =>

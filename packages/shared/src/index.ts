@@ -8,6 +8,32 @@ export type Severity = "critical" | "warning" | "info";
 export type Phase = "triage" | "investigate" | "remediate" | "verify";
 export type BackendMode = "sim" | "kind";
 
+/** A single step in the agent's live activity stream (SSE). */
+export type EventKind =
+  | "phase"
+  | "signal"
+  | "proposal"
+  | "gate"
+  | "action"
+  | "refusal"
+  | "verify"
+  | "rollback"
+  | "resolved";
+
+export type EventSeverity = "info" | "warn" | "danger" | "success";
+
+export interface AgentEvent {
+  seq: number;
+  ts: number;
+  kind: EventKind;
+  phase?: Phase;
+  tier?: Tier;
+  action?: string;
+  target?: string;
+  severity: EventSeverity;
+  message: string;
+}
+
 export interface AuditEntry {
   seq: number;
   action: string;

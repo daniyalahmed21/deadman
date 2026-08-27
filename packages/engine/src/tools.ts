@@ -24,6 +24,7 @@ import { triageAlert } from "./triage.js";
 import * as incident from "./incident.js";
 import * as incidents from "./incidents.js";
 import { buildPostmortem } from "./postmortem.js";
+import { emit } from "./events.js";
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -79,10 +80,18 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ alert, service }) => {
       const svc = service ?? "checkout";
+      emit({ kind: "phase", phase: "investigate", target: svc, severity: "info", message: `Investigating ${svc}: ${alert ?? "alert"}` });
       const result = await narrate(backend.investigate(svc), alert ?? "", svc);
       incident.setInvestigation(svc, result);
       const snap = incident.getInvestigation();
       if (snap) incidents.openIncident(snap, alert, audit.all().length, backend.serviceHealth(svc).memLimitMib);
+      emit({
+        kind: "signal",
+        phase: "investigate",
+        target: svc,
+        severity: result.is_noise ? "info" : "warn",
+        message: `Root cause: ${result.root_cause} (validity ${result.validity_score})`,
+      });
       return json(result);
     },
   );
@@ -248,6 +257,13 @@ export function registerDeadmanTools(server: McpServer): void {
     async ({ target }) => {
       const health = backend.serviceHealth(target);
       incidents.closeIncident(target, health.healthy, audit.all(), health.memLimitMib);
+      emit({
+        kind: health.healthy ? "resolved" : "verify",
+        phase: "verify",
+        target,
+        severity: health.healthy ? "success" : "warn",
+        message: health.healthy ? `${target} verified healthy - incident resolved` : `${target} still unhealthy on re-check`,
+      });
       return json({ ...health, resolved: health.healthy });
     },
   );
