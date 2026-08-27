@@ -24,7 +24,7 @@ import { costReport } from "./cost.js";
 import { policy } from "./classifier.js";
 import { seedDemoIncidents } from "./seed.js";
 import { recent, subscribe } from "./events.js";
-import { injectFailure, runDemo, demoRunning } from "./demo.js";
+import { injectFailure, runDemo, runBadFixDemo, demoRunning } from "./demo.js";
 import type { Scenario } from "./cluster.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
@@ -151,6 +151,15 @@ app.post("/dashboard/demo-run", (req, res) => {
   const scenario = parseScenario(req.body?.scenario ?? req.query.scenario);
   void runDemo(scenario); // fire-and-forget; the cockpit watches the SSE stream
   res.json({ started: true, scenario });
+});
+
+// Bad-fix demo (demo only): a wrong fix that the watchdog auto-rolls-back, then escalates.
+app.post("/dashboard/demo-badfix", (_req, res) => {
+  cors(res);
+  if (!demoMode()) return void res.status(403).json({ started: false, reason: "disabled outside demo mode" });
+  if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
+  void runBadFixDemo();
+  res.json({ started: true, mode: "badfix" });
 });
 
 app.get("/healthz", (_req, res) =>

@@ -17,6 +17,7 @@ import * as audit from "./audit.js";
 import { triageAlert } from "./triage.js";
 import { recordInvestigation } from "./cost.js";
 import { safeAction, gatedAction } from "./remediation.js";
+import { armWatchdog } from "./watchdog.js";
 import { emit } from "./events.js";
 
 const SERVICE = "checkout";
@@ -101,10 +102,81 @@ export async function runDemo(scenario: Scenario): Promise<void> {
     await sleep(500);
 
     plan.remediate(); // emits action/refusal events via the audit path
-    await sleep(1100);
+    await sleep(1000);
+
+    // Reversibility: watch that the fix actually holds before declaring victory.
+    await armWatchdog({
+      target: SERVICE,
+      windowMs: 3000,
+      intervalMs: 1000,
+      undo: () => backend.bumpMemory(SERVICE, memBefore),
+      undoLabel: "auto_rollback",
+    });
+    await sleep(700);
 
     emit({ kind: "phase", phase: "verify", target: SERVICE, severity: "info", message: `Verifying ${SERVICE}` });
+    await sleep(700);
+    const health = backend.serviceHealth(SERVICE);
+    incidents.closeIncident(SERVICE, health.healthy, audit.all(), health.memLimitMib);
+    emit({
+      kind: health.healthy ? "resolved" : "verify",
+      phase: "verify",
+      target: SERVICE,
+      severity: health.healthy ? "success" : "danger",
+      message: health.healthy ? `${SERVICE} healthy again - incident resolved` : `${SERVICE} still unhealthy`,
+    });
+  } finally {
+    running = false;
+  }
+}
+
+/**
+ * The trust beat: apply a *wrong* fix (a memory limit that's still too low), let the watchdog
+ * catch that it did not hold, auto-roll-back, then escalate to the correct fix and resolve.
+ */
+export async function runBadFixDemo(): Promise<void> {
+  if (running) return;
+  running = true;
+  try {
+    sim.setScenario("oom");
+    incident.resetIncident();
+    emit({ kind: "phase", phase: "triage", target: SERVICE, severity: "danger", message: "Alert received: checkout OOMKilled in prod" });
+    await sleep(900);
+
+    emit({ kind: "phase", phase: "investigate", target: SERVICE, severity: "info", message: `Investigating ${SERVICE}` });
+    recordInvestigation();
+    const inv = backend.investigate(SERVICE);
+    incident.setInvestigation(SERVICE, inv);
+    const snap = incident.getInvestigation();
+    const memBefore = backend.serviceHealth(SERVICE).memLimitMib; // 256
+    if (snap) incidents.openIncident(snap, "checkout OOMKilled in prod", audit.all().length, memBefore);
+    emit({ kind: "signal", phase: "investigate", severity: "warn", message: `Root cause: ${inv.root_cause}` });
+    await sleep(1000);
+
+    emit({ kind: "gate", phase: "remediate", severity: "warn", message: "Approved: raise memory limit to 300Mi" });
+    await sleep(700);
+    gatedAction("bump_memory", SERVICE, () => backend.bumpMemory(SERVICE, 300)); // still below 512 - won't hold
     await sleep(800);
+
+    // Watchdog: 300Mi never recovers within the window -> auto-rollback to 256Mi.
+    const verdict = await armWatchdog({
+      target: SERVICE,
+      windowMs: 3000,
+      intervalMs: 1000,
+      undo: () => backend.bumpMemory(SERVICE, memBefore),
+      undoLabel: "auto_rollback",
+    });
+    await sleep(800);
+
+    if (verdict === "rolled_back") {
+      emit({ kind: "proposal", phase: "remediate", severity: "info", message: "Escalating: applying the recommended 512Mi limit" });
+      await sleep(900);
+      gatedAction("bump_memory", SERVICE, () => backend.bumpMemory(SERVICE, 512));
+      await sleep(1000);
+    }
+
+    emit({ kind: "phase", phase: "verify", target: SERVICE, severity: "info", message: `Verifying ${SERVICE}` });
+    await sleep(700);
     const health = backend.serviceHealth(SERVICE);
     incidents.closeIncident(SERVICE, health.healthy, audit.all(), health.memLimitMib);
     emit({

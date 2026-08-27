@@ -28,12 +28,13 @@ export function record(e: Omit<AuditEntry, "seq">): AuditEntry {
       `${entry.isError ? "REFUSED/ERROR" : "OK"}: ${entry.outcome}`,
   );
   // Mirror every mutation onto the live stream so the cockpit shows it as it happens.
+  const kind = entry.isError ? "refusal" : /rollback/i.test(entry.action) ? "rollback" : "action";
   emit({
-    kind: entry.isError ? "refusal" : "action",
+    kind,
     tier: entry.tier,
     action: entry.action,
     target: entry.target,
-    severity: entry.isError ? "danger" : "success",
+    severity: entry.isError ? "danger" : kind === "rollback" ? "warn" : "success",
     message: entry.isError ? `Refused ${entry.action} on ${entry.target}: ${entry.outcome}` : `${entry.action} ${entry.target}: ${entry.outcome}`,
   });
   return entry;

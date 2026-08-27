@@ -16,17 +16,19 @@ export function DemoControls() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const run = async (scenario: Scenario) => {
+  const trigger = async (url: string, durationMs: number) => {
     setOpen(false);
     setBusy(true);
     try {
-      await fetch(`/dashboard/demo-run?scenario=${scenario}`, { method: "POST" });
+      await fetch(url, { method: "POST" });
     } catch {
       /* engine offline - ignore */
     }
-    // Re-enable after the run's paced duration (~9s).
-    setTimeout(() => setBusy(false), 9000);
+    setTimeout(() => setBusy(false), durationMs);
   };
+
+  const run = (scenario: Scenario) => trigger(`/dashboard/demo-run?scenario=${scenario}`, 9000);
+  const runBadFix = () => trigger("/dashboard/demo-badfix", 13000);
 
   return (
     <div className="relative">
@@ -40,7 +42,8 @@ export function DemoControls() {
         </Button>
       </div>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Resolve</div>
           {SCENARIOS.map((s) => (
             <button
               key={s.key}
@@ -50,6 +53,10 @@ export function DemoControls() {
               {s.label}
             </button>
           ))}
+          <div className="border-t px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Trust</div>
+          <button onClick={runBadFix} className="block w-full px-3 py-2 text-left text-sm hover:bg-muted">
+            Bad fix &rarr; auto-rollback
+          </button>
         </div>
       )}
     </div>
