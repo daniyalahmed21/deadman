@@ -5,6 +5,7 @@
  */
 
 import type { Tier } from "@deadman/shared";
+import { emit } from "./events.js";
 
 export interface AuditEntry {
   seq: number;
@@ -26,6 +27,16 @@ export function record(e: Omit<AuditEntry, "seq">): AuditEntry {
     `[audit] #${entry.seq} ${entry.action} ${entry.target} [${entry.tier}] -> ` +
       `${entry.isError ? "REFUSED/ERROR" : "OK"}: ${entry.outcome}`,
   );
+  // Mirror every mutation onto the live stream so the cockpit shows it as it happens.
+  const kind = entry.isError ? "refusal" : /rollback/i.test(entry.action) ? "rollback" : "action";
+  emit({
+    kind,
+    tier: entry.tier,
+    action: entry.action,
+    target: entry.target,
+    severity: entry.isError ? "danger" : kind === "rollback" ? "warn" : "success",
+    message: entry.isError ? `Refused ${entry.action} on ${entry.target}: ${entry.outcome}` : `${entry.action} ${entry.target}: ${entry.outcome}`,
+  });
   return entry;
 }
 

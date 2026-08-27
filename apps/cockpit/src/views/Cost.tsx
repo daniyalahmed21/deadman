@@ -42,7 +42,7 @@ export function Cost() {
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.6fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.6fr] [&>*]:min-w-0">
         {/* Execution mix */}
         <Card>
           <CardHeader>
