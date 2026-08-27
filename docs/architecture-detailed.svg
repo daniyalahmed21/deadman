@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 700" role="img" aria-labelledby="deadman-arch2-title deadman-arch2-desc">
+      <title id="deadman-arch2-title">DEADMAN detailed architecture</title>
+      <desc id="deadman-arch2-desc">A detailed view of the DEADMAN engine: the TrueForge harness calls read and write tools over MCP; read tools are narrated by Claude and read the cluster; write tools flow through a blast-radius classifier to an approval gate and a sensitive-target guard before acting on the cluster, with safe actions auto-running and hardline actions refused; an auto-rollback watchdog watches the cluster health and reverts fixes that do not hold; and every action is written to an append-only audit trail and streamed over SSE to the React cockpit.</desc>
+
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6b7280"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5354EC"/></marker>
+        <marker id="arrow-ink" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1E1E1E"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#F5F5F5"/>
+
+      <!-- ===== zones (drawn first) ===== -->
+      <rect x="32" y="72" width="184" height="356" rx="8" fill="rgba(30,30,30,0.02)" stroke="rgba(30,30,30,0.10)" stroke-width="0.8"/>
+      <rect x="72" y="76" width="104" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="124" y="85" fill="rgba(30,30,30,0.40)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.14em">HARNESS</text>
+
+      <rect x="248" y="72" width="756" height="556" rx="8" fill="rgba(30,30,30,0.02)" stroke="rgba(30,30,30,0.10)" stroke-width="0.8"/>
+      <rect x="512" y="76" width="228" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="626" y="85" fill="rgba(30,30,30,0.40)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.14em">DEADMAN ENGINE · MCP :9000</text>
+
+      <rect x="1036" y="72" width="212" height="356" rx="8" fill="rgba(30,30,30,0.02)" stroke="rgba(30,30,30,0.10)" stroke-width="0.8"/>
+      <rect x="1092" y="76" width="100" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="1142" y="85" fill="rgba(30,30,30,0.40)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.14em">PRODUCTION</text>
+
+      <!-- ===== arrows (drawn before nodes) ===== -->
+      <!-- 1. alert -> trueforge -->
+      <line x1="124" y1="176" x2="124" y2="224" stroke="#6b7280" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- 2. trueforge -> read tools (investigate, MCP) -->
+      <path d="M188,252 H212 Q220,252 220,244 V156 Q220,148 228,148 H276" fill="none" stroke="#5354EC" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="196" y="128" width="72" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="232" y="137" fill="#5354EC" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">INVESTIGATE</text>
+
+      <!-- 3. trueforge -> write tools (remediate, MCP) -->
+      <line x1="188" y1="300" x2="276" y2="300" stroke="#5354EC" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="196" y="280" width="68" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="230" y="289" fill="#5354EC" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">REMEDIATE</text>
+
+      <!-- 4. read tools -> LLM narrate -->
+      <line x1="456" y1="148" x2="508" y2="148" stroke="#6b7280" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="456" y="128" width="48" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="480" y="137" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">NARRATE</text>
+
+      <!-- 5. read tools -> cluster (read-only, top spanning) -->
+      <path d="M420,116 V104 Q420,96 428,96 H1134 Q1142,96 1142,104 V252" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="744" y="80" width="72" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="780" y="89" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">READ-ONLY</text>
+
+      <!-- 6. write tools -> classifier -->
+      <line x1="426" y1="300" x2="460" y2="300" stroke="#6b7280" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- 7. classifier -> gate (GATED) -->
+      <line x1="610" y1="300" x2="644" y2="300" stroke="#5354EC" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="612" y="280" width="40" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="632" y="289" fill="#5354EC" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">GATED</text>
+
+      <!-- 8. classifier -> guard (SAFE, skips gate, routed below) -->
+      <path d="M540,332 V352 Q540,360 548,360 H890 Q898,360 898,332" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="690" y="342" width="72" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="726" y="351" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">SAFE·AUTO</text>
+
+      <!-- 9. gate -> guard (approved) -->
+      <line x1="794" y1="300" x2="828" y2="300" stroke="#5354EC" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="796" y="280" width="36" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="814" y="289" fill="#5354EC" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">ALLOW</text>
+
+      <!-- 10. guard -> cluster (act) -->
+      <line x1="968" y1="300" x2="1060" y2="300" stroke="#6b7280" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="978" y="280" width="36" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="996" y="289" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">ACT</text>
+
+      <!-- 11. hardline refused (stops below classifier) -->
+      <line x1="500" y1="332" x2="500" y2="356" stroke="#1E1E1E" stroke-width="1.2" stroke-dasharray="4,3"/>
+      <line x1="494" y1="352" x2="506" y2="364" stroke="#1E1E1E" stroke-width="1.6"/>
+      <line x1="506" y1="352" x2="494" y2="364" stroke="#1E1E1E" stroke-width="1.6"/>
+      <rect x="456" y="372" width="88" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="500" y="381" fill="#1E1E1E" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">HARDLINE·REFUSED</text>
+
+      <!-- 12. cluster -> watchdog (health) -->
+      <path d="M1142,372 V428 Q1142,436 1134,436 H824" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="946" y="416" width="52" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="972" y="425" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">HEALTH</text>
+
+      <!-- 13. watchdog -> write tools (auto-rollback) -->
+      <path d="M644,436 H392 Q384,436 384,428 V332" fill="none" stroke="#5354EC" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+      <rect x="470" y="416" width="92" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="516" y="425" fill="#5354EC" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">AUTO-ROLLBACK</text>
+
+      <!-- 14. guard -> audit (record) -->
+      <path d="M860,332 V484 Q860,492 852,492 H374 Q366,492 366,500 V508" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="600" y="472" width="48" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="624" y="481" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">RECORD</text>
+
+      <!-- 15. audit -> event bus -->
+      <line x1="456" y1="540" x2="508" y2="540" stroke="#6b7280" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="458" y="520" width="40" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="478" y="529" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">EMIT</text>
+
+      <!-- 16. event bus -> cockpit (SSE) -->
+      <line x1="688" y1="540" x2="1060" y2="540" stroke="#5354EC" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="856" y="520" width="36" height="12" rx="2" fill="#F5F5F5"/>
+      <text x="874" y="529" fill="#5354EC" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.06em">SSE</text>
+
+      <!-- ===== nodes ===== -->
+      <!-- alert -->
+      <rect x="56" y="112" width="136" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="56" y="112" width="136" height="64" rx="6" fill="rgba(107,114,128,0.10)" stroke="#9aa0a6" stroke-width="1"/>
+      <rect x="64" y="118" width="20" height="12" rx="2" fill="transparent" stroke="rgba(154,160,166,0.6)" stroke-width="0.8"/>
+      <text x="74" y="127" fill="#9aa0a6" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">IN</text>
+      <text x="124" y="150" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Alert</text>
+      <text x="124" y="167" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">OOMKilled · 5xx</text>
+
+      <!-- trueforge -->
+      <rect x="56" y="224" width="136" height="120" rx="6" fill="#F5F5F5"/>
+      <rect x="56" y="224" width="136" height="120" rx="6" fill="#ffffff" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="64" y="230" width="52" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.40)" stroke-width="0.8"/>
+      <text x="90" y="239" fill="rgba(30,30,30,0.80)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">HARNESS</text>
+      <text x="124" y="272" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">TrueForge</text>
+      <text x="124" y="290" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">agent · skills</text>
+      <text x="124" y="304" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">sandbox · session</text>
+      <text x="124" y="324" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">:8790</text>
+
+      <!-- read tools -->
+      <rect x="276" y="116" width="180" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="276" y="116" width="180" height="64" rx="6" fill="rgba(30,30,30,0.05)" stroke="#6b7280" stroke-width="1"/>
+      <rect x="284" y="122" width="60" height="12" rx="2" fill="transparent" stroke="rgba(107,114,128,0.5)" stroke-width="0.8"/>
+      <text x="314" y="131" fill="#6b7280" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">READ TOOLS</text>
+      <text x="366" y="152" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Investigate</text>
+      <text x="366" y="169" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">triage · health · propose · dry_run</text>
+
+      <!-- LLM narrate -->
+      <rect x="508" y="116" width="180" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="508" y="116" width="180" height="64" rx="6" fill="rgba(30,30,30,0.03)" stroke="rgba(30,30,30,0.30)" stroke-width="1"/>
+      <rect x="516" y="122" width="36" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.30)" stroke-width="0.8"/>
+      <text x="534" y="131" fill="rgba(30,30,30,0.60)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+      <text x="598" y="152" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Claude narration</text>
+      <text x="598" y="169" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">grounds RCA · deterministic fallback</text>
+
+      <!-- write tools -->
+      <rect x="276" y="268" width="150" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="276" y="268" width="150" height="64" rx="6" fill="#ffffff" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="284" y="274" width="64" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.40)" stroke-width="0.8"/>
+      <text x="316" y="283" fill="rgba(30,30,30,0.80)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">WRITE TOOLS</text>
+      <text x="351" y="306" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Remediate</text>
+      <text x="351" y="323" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">restart · bump · rollback</text>
+
+      <!-- classifier (focal) -->
+      <rect x="460" y="268" width="150" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="460" y="268" width="150" height="64" rx="6" fill="rgba(83,84,236,0.08)" stroke="#5354EC" stroke-width="1.4"/>
+      <rect x="468" y="274" width="72" height="12" rx="2" fill="transparent" stroke="rgba(83,84,236,0.5)" stroke-width="0.8"/>
+      <text x="504" y="283" fill="#5354EC" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">CLASSIFIER</text>
+      <text x="535" y="306" fill="#5354EC" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Blast radius</text>
+      <text x="535" y="323" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">SAFE · GATED · HARDLINE</text>
+
+      <!-- approval gate (focal) -->
+      <rect x="644" y="268" width="150" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="644" y="268" width="150" height="64" rx="6" fill="rgba(83,84,236,0.08)" stroke="#5354EC" stroke-width="1.4"/>
+      <rect x="652" y="274" width="36" height="12" rx="2" fill="transparent" stroke="rgba(83,84,236,0.5)" stroke-width="0.8"/>
+      <text x="670" y="283" fill="#5354EC" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">GATE</text>
+      <text x="719" y="306" fill="#5354EC" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Approval gate</text>
+      <text x="719" y="323" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">TrueForge · Allow / Deny</text>
+
+      <!-- guard / floor -->
+      <rect x="828" y="268" width="140" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="828" y="268" width="140" height="64" rx="6" fill="#ffffff" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="836" y="274" width="40" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.40)" stroke-width="0.8"/>
+      <text x="856" y="283" fill="rgba(30,30,30,0.80)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">FLOOR</text>
+      <text x="898" y="306" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Target guard</text>
+      <text x="898" y="323" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">protected resources</text>
+
+      <!-- watchdog -->
+      <rect x="644" y="404" width="180" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="644" y="404" width="180" height="64" rx="6" fill="#ffffff" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="652" y="410" width="56" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.40)" stroke-width="0.8"/>
+      <text x="680" y="419" fill="rgba(30,30,30,0.80)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">WATCHDOG</text>
+      <text x="734" y="440" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Auto-rollback</text>
+      <text x="734" y="457" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">verify held · revert if not</text>
+
+      <!-- audit -->
+      <rect x="276" y="508" width="180" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="276" y="508" width="180" height="64" rx="6" fill="#1E1E1E" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="284" y="514" width="36" height="12" rx="2" fill="transparent" stroke="rgba(226,243,75,0.5)" stroke-width="0.8"/>
+      <text x="302" y="523" fill="#E2F34B" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">AUDIT</text>
+      <text x="366" y="544" fill="#E2F34B" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Audit trail</text>
+      <text x="366" y="561" fill="rgba(245,245,245,0.60)" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">append-only · who / what</text>
+
+      <!-- event bus -->
+      <rect x="508" y="508" width="180" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="508" y="508" width="180" height="64" rx="6" fill="#ffffff" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="516" y="514" width="56" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.40)" stroke-width="0.8"/>
+      <text x="544" y="523" fill="rgba(30,30,30,0.80)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">EVENTS</text>
+      <text x="598" y="544" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Event bus</text>
+      <text x="598" y="561" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">ring buffer · SSE</text>
+
+      <!-- cluster -->
+      <rect x="1060" y="252" width="164" height="120" rx="6" fill="#F5F5F5"/>
+      <rect x="1060" y="252" width="164" height="120" rx="6" fill="rgba(30,30,30,0.03)" stroke="rgba(30,30,30,0.30)" stroke-width="1"/>
+      <rect x="1068" y="258" width="32" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.30)" stroke-width="0.8"/>
+      <text x="1084" y="267" fill="rgba(30,30,30,0.60)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">K8S</text>
+      <text x="1142" y="304" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Cluster</text>
+      <text x="1142" y="322" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">ClusterBackend</text>
+      <text x="1142" y="338" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">kind / in-mem sim</text>
+
+      <!-- cockpit -->
+      <rect x="1060" y="508" width="164" height="64" rx="6" fill="#F5F5F5"/>
+      <rect x="1060" y="508" width="164" height="64" rx="6" fill="#ffffff" stroke="#1E1E1E" stroke-width="1"/>
+      <rect x="1068" y="514" width="20" height="12" rx="2" fill="transparent" stroke="rgba(30,30,30,0.40)" stroke-width="0.8"/>
+      <text x="1078" y="523" fill="rgba(30,30,30,0.80)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+      <text x="1142" y="544" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Cockpit</text>
+      <text x="1142" y="561" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">React · live feed · :5173</text>
+
+      <!-- ===== legend ===== -->
+      <line x1="32" y1="648" x2="1248" y2="648" stroke="rgba(30,30,30,0.10)" stroke-width="0.8"/>
+      <text x="32" y="668" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+      <line x1="120" y1="665" x2="148" y2="665" stroke="#5354EC" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <text x="156" y="668" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace">MCP / approved / SSE</text>
+      <line x1="360" y1="665" x2="388" y2="665" stroke="#6b7280" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <text x="396" y="668" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace">act / record</text>
+      <line x1="560" y1="665" x2="588" y2="665" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <text x="596" y="668" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace">read / health / safe-auto</text>
+      <line x1="812" y1="665" x2="840" y2="665" stroke="#5354EC" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+      <text x="848" y="668" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace">auto-rollback</text>
+      <line x1="1010" y1="661" x2="1018" y2="669" stroke="#1E1E1E" stroke-width="1.6"/>
+      <line x1="1018" y1="661" x2="1010" y2="669" stroke="#1E1E1E" stroke-width="1.6"/>
+      <text x="1030" y="668" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace">hardline · refused</text>
+    </svg>
