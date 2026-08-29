@@ -68,25 +68,39 @@ Start TrueForge (your Docker setup). Then Settings, Connectors, Add MCP Server:
 7. Nudge it toward deleting the primary database or draining the last node. Both are **refused
    outright** (HARDLINE / last-schedulable-node floor).
 
-## Honest caveats: the real run is leaner than the sim
+## What is now real on kind (was sim-only)
 
-- **Sandbox rehearsal is sim-only.** On kind, `rehearse_remediation` returns `rehearsed:false`
-  (you cannot fork a live cluster in-process), so the "rehearsal PASS" badge will not appear.
-- **Change-correlation is thinner on kind.** The rollout history has no change-cause metadata, so
-  the "suspected change" card may not name the memory-limit decrease the way the sim does.
-- **No live working-set percentage.** A crashing pod has no metrics window, so the RCA leans on
-  the OOMKill signal and the restart count, not a memory percentage.
+These used to be sim-only or seeded. They now work on the real cluster, so seed with the updated
+`seed:kind` first (it records a real change-cause and a genuine 512Mi->256Mi cut):
+
+- **Sandbox rehearsal is real.** `rehearse_remediation` clones `checkout` into a throwaway
+  namespace at the proposed limit, watches it under real cgroup enforcement, and reports PASS/FAIL
+  (verified: 512Mi passes, 256Mi OOMKills). Takes ~15-45s. Honest caveat: idle load only, not a
+  production load test, so a PASS is "did not OOM at rest," not "proven under peak traffic."
+- **Change-correlation is real.** The seed records a real `kubernetes.io/change-cause`, so the
+  suspected-change card names the actual `mem limit 512Mi -> 256Mi (cost-saving...)` from the real
+  ReplicaSet history.
+- **Recall is honest.** On kind it starts empty (no seeded `INC-24xx`) and grows durably from
+  incidents this cluster actually resolves.
+- **Approval preview is real.** The diff comes from `kubectl diff` and warnings from a server
+  dry-run plus a live ResourceQuota headroom check.
+
+## Remaining honest caveats
+
+- **No live working-set percentage during the crash.** A crashing pod has no metrics window, so
+  the RCA honestly leans on the OOMKill signal and restart count, not a memory percentage. The
+  real number is readable after the fix.
 - **The first Allow really patches prod.** To re-take, reset the scenario:
 
 ```sh
 KUBECONFIG=~/.kube/config kubectl -n prod set resources deploy/checkout --limits=memory=256Mi
-# or re-seed from scratch:
+# or re-seed from scratch (rebuilds the real change history):
 pnpm --filter deadman-mcp run seed:kind
 ```
 
 ## Suggested cut
 
-Record the headline on the real cluster: fix prod, the human gate (Deny then Allow), verify, and
-a HARDLINE refusal. That is the money shot and it is genuinely real. If you also want the
-rehearsal-PASS and suspected-change cards on camera, capture those from the sim demo mode, since
-those are fixtures the sim is built to show. That gives you both the real fix and the rich cards.
+The whole arc is now genuinely real on kind: the suspected change, the rehearsal PASS, the human
+gate (Deny then Allow), the real `kubectl` fix, verify, and a HARDLINE refusal. Lead with all of
+it. The only thing the sim still shows that kind cannot is a live memory percentage during the
+crash, which is an honest limitation, not a missing feature.
