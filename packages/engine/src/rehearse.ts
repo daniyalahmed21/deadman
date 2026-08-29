@@ -48,10 +48,14 @@ export function rehearse(action: string, target: string, args: { mib?: number; r
   const snapshot = { healthy: h.healthy, memLimitMib: h.memLimitMib };
 
   if (backend.mode !== "sim") {
+    // Real cluster: rehearse a memory fix by cloning into a throwaway namespace and watching it.
+    if (action === "bump_memory" && args.mib && backend.rehearseInNamespace) {
+      return backend.rehearseInNamespace(target, args.mib);
+    }
     return {
       action, target, backend: backend.mode, rehearsed: false, pass: false,
       before: snapshot, after: snapshot,
-      detail: "kind backend: in-process rehearsal unavailable - would clone into an ephemeral namespace.",
+      detail: `${backend.mode} backend: real rehearsal is implemented for bump_memory (ephemeral-namespace clone); other actions rely on the auto-rollback watchdog.`,
     };
   }
   if (!REHEARSABLE.has(action)) {

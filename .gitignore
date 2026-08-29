@@ -14,3 +14,6 @@ dist/
 
 # os
 .DS_Store
+
+# local incident-memory store (kind mode)
+packages/engine/.deadman-memory.json

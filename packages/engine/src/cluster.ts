@@ -122,6 +122,60 @@ export function podLogsSim(deployment: string, lines: number): string[] {
   return all.slice(-Math.max(1, lines));
 }
 
+/**
+ * Logs from the *previous* (crashed) container. After a restart the live container is fresh and
+ * often empty; the death signal (the OOMKill / crash) is in the instance that died. This is what
+ * `kubectl logs --previous` surfaces, and it is the single most useful read for a CrashLoop/OOM.
+ */
+export function podPreviousLogsSim(deployment: string, lines: number): string[] {
+  const healthy = state.deployments[deployment]?.healthy ?? false;
+  if (healthy) return ["(no previous container: current pod has not restarted)"];
+  const all = [
+    "checkout: ready, serving traffic",
+    "stress: info: [1] dispatching hogs: 1 vm",
+    "stress: FAIL: [1] (415) <-- worker got signal 9 (SIGKILL)",
+    "container app exceeded memory limit (256Mi) -> OOMKilled (exit 137)",
+  ];
+  return all.slice(-Math.max(1, lines));
+}
+
+/** A `kubectl describe pod`-style summary: status, restarts, last-state/exit, conditions, events. */
+export function describePodSim(deployment: string): string {
+  const dep = state.deployments[deployment];
+  const pods = Object.values(state.pods).filter((p) => p.deployment === deployment);
+  if (pods.length === 0) return `No pods found for deployment ${deployment}`;
+  return pods
+    .map((p) => {
+      const healthy = dep?.healthy ?? false;
+      const exit = p.reason === "OOMKilled" ? 137 : 1;
+      const lastState = healthy
+        ? "Last State:    None"
+        : `Last State:    Terminated (Reason: ${p.reason ?? "Error"}, Exit Code: ${exit})`;
+      const events = healthy
+        ? ["  Normal   Started   Started container app"]
+        : [
+            `  Warning  ${p.reason ?? "BackOff"}  ${p.reason === "OOMKilled" ? "Container app was OOM-killed (exit 137)" : "Container app failing"}`,
+            "  Warning  BackOff   Back-off restarting failed container app",
+          ];
+      return [
+        `Name:          ${p.name}`,
+        `Namespace:     prod`,
+        `Status:        ${healthy ? "Running" : p.phase}`,
+        `Restart Count: ${p.restarts}`,
+        dep ? `Memory Limit:  ${dep.memLimitMib}Mi` : "",
+        lastState,
+        `Conditions:`,
+        `  Ready            ${healthy ? "True" : "False"}`,
+        `  ContainersReady  ${healthy ? "True" : "False"}`,
+        `Events:`,
+        ...events,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
+}
+
 export function clusterEventsSim(deployment: string): string[] {
   const failing = (state.deployments[deployment]?.memLimitMib ?? 0) < 512;
   return failing

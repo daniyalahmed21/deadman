@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import type { ClusterBackend, HealthSnapshot, Metrics } from "../backend.js";
 import { buildInvestigation } from "../investigate.js";
 import type { InvestigationResult } from "../fixtures.js";
-import type { ChangeEvent } from "@deadman/shared";
+import type { ChangeEvent, RehearsalResult } from "@deadman/shared";
 
 const CTX = process.env.KIND_CONTEXT ?? "kind-deadman";
 const NS = process.env.KIND_NAMESPACE ?? "prod";
@@ -35,6 +35,51 @@ function nsTry(args: string[]): { ok: boolean; out: string } {
     const err = e as { stderr?: string; stdout?: string; message?: string };
     return { ok: false, out: String(err.stderr || err.stdout || err.message || "").trim() };
   }
+}
+
+/** Namespaced kubectl that pipes a manifest on stdin (for `diff` / `apply -f -`). */
+function nsStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
+  try {
+    const out = execFileSync("kubectl", ["--context", CTX, "-n", NS, ...args], {
+      encoding: "utf8",
+      input: stdin,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { code: 0, out: out.trim(), err: "" };
+  } catch (e) {
+    const x = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: x.status ?? 1, out: String(x.stdout ?? "").trim(), err: String(x.stderr ?? "").trim() };
+  }
+}
+
+/** Short random suffix for an ephemeral rehearsal namespace. */
+function randId(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+/** Cluster-scoped kubectl that pipes a manifest on stdin (applies to the manifest's own namespace). */
+function cmdStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
+  try {
+    const out = execFileSync("kubectl", ["--context", CTX, ...args], {
+      encoding: "utf8",
+      input: stdin,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { code: 0, out: out.trim(), err: "" };
+  } catch (e) {
+    const x = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: x.status ?? 1, out: String(x.stdout ?? "").trim(), err: String(x.stderr ?? "").trim() };
+  }
+}
+
+/** Trim `kubectl diff` output to the meaningful hunks: drop temp-path headers and metadata noise. */
+function cleanDiff(out: string): string {
+  return out
+    .split("\n")
+    .filter((l) => !/^(diff -|--- |\+\+\+ )/.test(l))
+    .filter((l) => !/last-applied-configuration|generation:|creationTimestamp:|"apiVersion"/.test(l))
+    .join("\n")
+    .trim();
 }
 
 /** Cluster-scoped (no namespace) kubectl, for node operations. */
@@ -158,6 +203,122 @@ export const kindBackend: ClusterBackend = {
     const r = nsTry(["logs", "-l", `app=${deployment}`, `--tail=${lines}`, "--all-containers=true"]);
     return r.ok ? r.out.split("\n").filter(Boolean) : [`(no logs: ${r.out})`];
   },
+  previousLogs(deployment, lines) {
+    // --previous: the container that DIED. Empty/erroring when the pod has never restarted.
+    const r = nsTry(["logs", "-l", `app=${deployment}`, "--previous", `--tail=${lines}`, "--all-containers=true"]);
+    return r.ok && r.out ? r.out.split("\n").filter(Boolean) : [`(no previous container logs: ${r.out || "pod has not restarted"})`];
+  },
+  describePod(deployment) {
+    const r = nsTry(["describe", "pod", "-l", `app=${deployment}`]);
+    return r.ok ? r.out : `(describe failed: ${r.out})`;
+  },
+  previewChange(deployment, mutate) {
+    const live = nsTry(["get", "deploy", deployment, "-o", "json"]);
+    if (!live.ok) return { rawDiff: "", warnings: [`preview unavailable: ${live.out}`] };
+    let obj: any;
+    try {
+      obj = JSON.parse(live.out);
+    } catch {
+      return { rawDiff: "", warnings: ["preview unavailable: could not parse live object"] };
+    }
+    delete obj.status;
+    if (obj.metadata) delete obj.metadata.managedFields;
+    mutate(obj);
+    const manifest = JSON.stringify(obj);
+
+    // Real field diff: exit 1 means "differences found" (not an error); >1 is a real failure.
+    const d = nsStdin(["diff", "-f", "-"], manifest);
+    const rawDiff = d.code <= 1 ? cleanDiff(d.out) : "";
+
+    // Real validity check: full admission chain (quota, limitrange, webhooks) without persisting.
+    const warnings: string[] = [];
+    const v = nsStdin(["apply", "--dry-run=server", "-f", "-"], manifest);
+    if (v.code !== 0) {
+      warnings.push(`This change would be REJECTED: ${(v.err || v.out).split("\n")[0] || "admission denied"}`);
+    } else {
+      for (const line of `${v.err}\n${v.out}`.split("\n")) {
+        const t = line.trim();
+        if (/^Warning:/i.test(t)) warnings.push(t);
+      }
+    }
+    return { rawDiff, warnings };
+  },
+  namespaceMemoryQuota() {
+    const r = nsTry(["get", "resourcequota", "-o", "json"]);
+    if (!r.ok) return null;
+    let items: any[] = [];
+    try {
+      items = JSON.parse(r.out).items ?? [];
+    } catch {
+      return null;
+    }
+    for (const q of items) {
+      const hard = q.status?.hard?.["limits.memory"] ?? q.spec?.hard?.["limits.memory"];
+      if (hard) {
+        const used = q.status?.used?.["limits.memory"] ?? "0";
+        return { hardMib: parseMemMib(String(hard)), usedMib: parseMemMib(String(used)) };
+      }
+    }
+    return null;
+  },
+  rehearseInNamespace(deployment, memMib) {
+    const beforeLimit = memLimit(deployment);
+    const before = { healthy: beforeLimit >= HEALTHY_MEM_MIB, memLimitMib: beforeLimit };
+    const fail = (detail: string): RehearsalResult => ({
+      action: "bump_memory", target: deployment, backend: "kind", rehearsed: false, pass: false, before, after: before, detail,
+    });
+
+    const raw = nsTry(["get", "deploy", deployment, "-o", "json"]);
+    if (!raw.ok) return fail(`could not read ${deployment}: ${raw.out}`);
+    let obj: any;
+    try {
+      obj = JSON.parse(raw.out);
+    } catch {
+      return fail("could not parse deployment spec");
+    }
+
+    const rehNs = `deadman-rehearse-${randId()}`;
+    try {
+      // Clone the spec: fix the limit, force 1 replica, strip identity so it applies cleanly.
+      const c = obj.spec.template.spec.containers[0];
+      c.resources = { ...(c.resources ?? {}), limits: { ...(c.resources?.limits ?? {}), memory: `${memMib}Mi` } };
+      obj.spec.replicas = 1;
+      delete obj.status;
+      const md = obj.metadata ?? {};
+      for (const k of ["uid", "resourceVersion", "creationTimestamp", "generation", "managedFields"]) delete md[k];
+      if (md.annotations) delete md.annotations["kubectl.kubernetes.io/last-applied-configuration"];
+      md.namespace = rehNs;
+      obj.metadata = md;
+      const manifest = JSON.stringify(obj);
+
+      runTry(["create", "namespace", rehNs]);
+      const applied = cmdStdin(["apply", "-f", "-"], manifest);
+      if (applied.code !== 0) return fail(`rehearsal apply failed: ${applied.err || applied.out}`);
+
+      // Bounded watch: wait for the rollout (or time out), then read the clone's real pod state.
+      runTry(["-n", rehNs, "rollout", "status", `deploy/${deployment}`, "--timeout=60s"]);
+      const st = runTry([
+        "-n", rehNs, "get", "pods", "-l", `app=${deployment}`, "-o",
+        'jsonpath={range .items[*]}{.status.phase}|{.status.containerStatuses[0].restartCount}|{.status.containerStatuses[0].lastState.terminated.reason}{"\\n"}{end}',
+      ]);
+      const lines = st.ok ? st.out.split("\n").filter(Boolean) : [];
+      const oom = lines.some((l) => /OOMKilled/i.test(l));
+      const running = lines.some((l) => l.startsWith("Running")) && !oom;
+      const after = { healthy: running, memLimitMib: memMib };
+      return {
+        action: "bump_memory", target: deployment, backend: "kind", rehearsed: true, pass: running,
+        before, after,
+        detail: running
+          ? `clone ran healthy at ${memMib}Mi (no OOM in the watch window; idle load only, not a load test)`
+          : oom
+            ? `clone OOMKilled at ${memMib}Mi in the rehearsal namespace`
+            : `clone did not become ready at ${memMib}Mi`,
+      };
+    } finally {
+      // Fire-and-forget teardown: never block the tool response on namespace deletion.
+      runTry(["delete", "namespace", rehNs, "--wait=false"]);
+    }
+  },
   events(deployment) {
     const r = nsTry([
       "get",
@@ -194,6 +355,8 @@ export const kindBackend: ClusterBackend = {
           at: Date.parse(rs.metadata?.creationTimestamp ?? "") || Date.now(),
           image: (c.image as string | undefined) ?? "",
           mem: parseMemMib((c.resources?.limits?.memory as string | undefined) ?? ""),
+          // The human "why", if someone recorded it (kubectl annotate kubernetes.io/change-cause=...).
+          cause: (rs.metadata?.annotations?.["kubernetes.io/change-cause"] as string | undefined) ?? "",
         };
       })
       .filter((rs) => rs.revision > 0)
@@ -201,13 +364,14 @@ export const kindBackend: ClusterBackend = {
 
     return rss.map((rs, i): ChangeEvent => {
       const prev = rss[i - 1];
+      const why = rs.cause ? ` (${rs.cause})` : "";
       if (prev && rs.image && rs.image !== prev.image) {
-        return { revision: rs.revision, at: rs.at, kind: "image", summary: `image ${prev.image} -> ${rs.image}`, imageTag: rs.image };
+        return { revision: rs.revision, at: rs.at, kind: "image", summary: `image ${prev.image} -> ${rs.image}${why}`, imageTag: rs.image };
       }
       if (prev && rs.mem > 0 && prev.mem > 0 && rs.mem !== prev.mem) {
-        return { revision: rs.revision, at: rs.at, kind: "mem_limit", summary: `mem limit ${prev.mem}Mi -> ${rs.mem}Mi`, memLimitMib: rs.mem, previousMemLimitMib: prev.mem };
+        return { revision: rs.revision, at: rs.at, kind: "mem_limit", summary: `mem limit ${prev.mem}Mi -> ${rs.mem}Mi${why}`, memLimitMib: rs.mem, previousMemLimitMib: prev.mem };
       }
-      return { revision: rs.revision, at: rs.at, kind: "deploy", summary: `rollout revision ${rs.revision}` };
+      return { revision: rs.revision, at: rs.at, kind: "deploy", summary: `rollout revision ${rs.revision}${why}` };
     });
   },
 
