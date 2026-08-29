@@ -8,6 +8,7 @@ import { StatBlock } from "@/components/ui/statblock";
 import { Gauge } from "@/components/ui/gauge";
 import { LiveFeed } from "@/components/LiveFeed";
 import { DemoControls } from "@/components/DemoControls";
+import { RemediationPlan } from "@/components/RemediationPlan";
 import type { DashboardFeed } from "@/lib/useDashboard";
 import { useEventStream } from "@/lib/useEventStream";
 import { cn, num } from "@/lib/utils";
@@ -216,6 +217,8 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
           </Card>
         </div>
       </div>
+
+      {state?.insights && <RemediationPlan insights={state.insights} />}
     </div>
   );
 }

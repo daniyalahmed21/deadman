@@ -5,6 +5,7 @@
 
 import { backend } from "./backend.js";
 import { getInvestigation } from "./incident.js";
+import { getInsights } from "./insights.js";
 import * as audit from "./audit.js";
 
 export function dashboardState() {
@@ -32,6 +33,7 @@ export function dashboardState() {
           change: inv.change,
         }
       : null,
+    insights: getInsights(),
     audit: audit.all(),
     ts: Date.now(),
   };

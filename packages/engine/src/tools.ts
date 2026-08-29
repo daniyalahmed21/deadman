@@ -31,6 +31,7 @@ import { rehearse } from "./rehearse.js";
 import { previewRemediation } from "./preview.js";
 import { recallSimilar, type AlertSketch } from "./recall.js";
 import { allMemories, rememberIncident } from "./memory.js";
+import { buildRemediationPlan } from "./plan.js";
 
 /** Map a coarse symptom to the k8s signal label used in incident memory. */
 const SIGNAL_LABEL: Record<string, string> = { oom: "OOMKilled", imagepull: "ImagePullBackOff", crashloop: "CrashLoopBackOff" };
@@ -120,6 +121,9 @@ export function registerDeadmanTools(server: McpServer): void {
         ];
         emit({ kind: "signal", phase: "investigate", target: svc, severity: "warn", message: corr.reason });
       }
+
+      // Compute the remediation plan (recall + preview + rehearsal) for the recommended fix.
+      buildRemediationPlan(svc, result.root_cause);
 
       incident.setInvestigation(svc, result);
       const snap = incident.getInvestigation();

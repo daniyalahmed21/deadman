@@ -149,6 +149,14 @@ export interface RehearsalResult {
   detail: string;
 }
 
+/** The agent's remediation plan for the current incident: the proven fix, its diff, and a rehearsal. */
+export interface Insights {
+  recommendedAction: string | null;
+  recall: RecallMatch | null;
+  preview: RemediationPreview | null;
+  rehearsal: RehearsalResult | null;
+}
+
 export interface DashboardState {
   mode: BackendMode;
   service: string;
@@ -161,6 +169,7 @@ export interface DashboardState {
   };
   metrics: { workingSetMib: number; cpuMillis: number };
   investigation: Investigation | null;
+  insights: Insights;
   audit: AuditEntry[];
   ts: number;
 }

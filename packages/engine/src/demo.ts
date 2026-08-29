@@ -19,6 +19,7 @@ import { recordInvestigation } from "./cost.js";
 import { safeAction, gatedAction } from "./remediation.js";
 import { armWatchdog } from "./watchdog.js";
 import { correlateChange, symptomOf } from "./correlate.js";
+import { buildRemediationPlan } from "./plan.js";
 import { emit } from "./events.js";
 
 const SERVICE = "checkout";
@@ -92,6 +93,7 @@ export async function runDemo(scenario: Scenario): Promise<void> {
     const corr = correlateChange(backend.changeHistory(SERVICE), Date.now(), symptomOf(inv.root_cause), memBefore);
     inv.change = corr;
     incident.setInvestigation(SERVICE, inv);
+    buildRemediationPlan(SERVICE, inv.root_cause);
     const snap = incident.getInvestigation();
     if (snap) incidents.openIncident(snap, plan.alert, audit.all().length, memBefore);
     emit({ kind: "signal", phase: "investigate", severity: "warn", message: `Root cause: ${inv.root_cause}` });
