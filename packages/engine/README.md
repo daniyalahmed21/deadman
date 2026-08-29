@@ -195,6 +195,13 @@ never lost or looped forever). `AlertQueue` ([`alerts/queue.ts`](src/alerts/queu
 narrow interface, so SQS / Kafka / pg-boss can replace Redis without touching the webhook or the
 bridge — the same seam the cluster backends use.
 
+Idempotency is enforced **end to end**: beyond the enqueue-time `jobId` dedup, the worker records
+the opened session per `dedupKey` ([`alerts/idempotency.ts`](src/alerts/idempotency.ts)), so a
+retry (at-least-once delivery) returns the existing session instead of opening a second one — so
+at-least-once *delivery* never becomes at-least-once *remediation*. The **audit trail is durable**
+too ([`alerts/persist.ts`](src/alerts/persist.ts)): it replays from Redis on boot and mirrors
+every mutating call, so a restart never loses the record of what the agent did to production.
+
 ```sh
 docker compose -f docker-compose.redis.yml up -d   # Redis for the queue
 DEADMAN_ALERTS=1 pnpm start                         # enable ingestion
@@ -220,6 +227,7 @@ token set, remote calls are refused and ingestion is loopback-only).
 | `TRUEFORGE_URL` | TrueForge base URL the worker opens sessions against (default `http://localhost:8790`). |
 | `DEADMAN_AGENT` | Agent name the worker drives (default `deadman`). |
 | `DEADMAN_ALERT_ATTEMPTS` / `_BACKOFF_MS` / `_DEDUP_WINDOW_SEC` / `_CONCURRENCY` | Queue retry, backoff, dedup window, and worker concurrency tuning. |
+| `DEADMAN_AUDIT_KEY` | Redis key for the durable audit trail (default `deadman:audit`). |
 | `DEADMAN_CLUSTER=kind` | Use the real kind backend instead of the sim. |
 | `ANTHROPIC_API_KEY` | Enables LLM narration (in `.env`). |
 | `DEADMAN_LLM_NARRATION=off` | Force deterministic prose. |
@@ -229,8 +237,11 @@ token set, remote calls are refused and ingestion is loopback-only).
 
 ## Tests
 
-`pnpm test` runs the vitest suite (91 tests across 17 files): the safety floor and frozen
+`pnpm test` runs the vitest suite (98 tests across 18 files): the safety floor and frozen
 policy, prompt-injection refusals (`adversarial`), the watchdog, change-correlation, recall,
-rehearsal, preview, triage, investigation, postmortem, the sim cluster, and alert
-normalisation + dedup (`alerts`). The output contracts do not change when a backend or narration
-is swapped, only the tool bodies.
+rehearsal, preview, triage, investigation, postmortem, the sim cluster, alert normalisation +
+dedup (`alerts`), and audit persistence + metrics + the idempotency guard (`tier1`). The output
+contracts do not change when a backend or narration is swapped, only the tool bodies.
+
+`pnpm lint` (ESLint) and `pnpm test:coverage` (v8) round out the quality gates; `pnpm lint` runs
+in CI and `max-lines` is a hard error, so no file may sprawl past 500 lines.

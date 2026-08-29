@@ -64,7 +64,7 @@ One click each, streamed step by step:
 
 ```sh
 pnpm install
-pnpm --filter deadman-mcp test              # 68 unit + adversarial tests
+pnpm --filter deadman-mcp test              # 98 unit + adversarial tests
 DEADMAN_DEMO_MODE=1 pnpm engine             # engine (sim backend) -> http://localhost:9000/mcp
 pnpm dev                                     # cockpit -> http://localhost:5173
 ```
@@ -78,8 +78,10 @@ drive the full arc from the TrueForge chat. For a real cluster instead of the si
 - **[`packages/engine/`](packages/engine/)** the DEADMAN engine: a remote streamable-HTTP MCP
   server. Tool surface with read/write gate annotations, a blast-radius classifier, the
   sensitive-target floor, the auto-rollback watchdog, change-correlation, sandbox rehearsal,
-  approval-diff preview, runbook memory, an append-only audit trail, an SSE event stream, and
-  both cluster backends (`sim` / `kind`). See its [README](packages/engine/README.md).
+  approval-diff preview, runbook memory, a durable audit trail, an SSE event stream, and both
+  cluster backends (`sim` / any real cluster via `kind`). Optional production alert ingestion
+  (webhook -> durable Redis queue -> TrueForge session) plus `/metrics` and `/readyz`. See its
+  [README](packages/engine/README.md).
 - **[`apps/cockpit/`](apps/cockpit/)** the React app: the marketing landing at `/` and the
   live observability cockpit at `/app` (overview, incidents with replay, safety, cost), fed by
   the engine's SSE stream. Deploys as one Vite build on Vercel.
@@ -94,9 +96,9 @@ drive the full arc from the TrueForge chat. For a real cluster instead of the si
 - **AI code review on every PR**: pull requests are auto-reviewed by
   [Qodo Merge](https://www.qodo.ai/) (comment `/review`). Findings are triaged and real ones
   fixed before merge.
-- **CI on every push** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): typecheck plus
-  68 unit, end-to-end, and adversarial tests (prompt-injection refusals, frozen policy). Every
-  safety control must hold.
+- **CI on every push** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): ESLint, typecheck,
+  plus 98 unit, end-to-end, and adversarial tests (prompt-injection refusals, frozen policy). Every
+  safety control must hold, and `max-lines` is a hard lint error so no file may sprawl past 500 lines.
 - **pnpm monorepo** (`apps/*`, `packages/*`).
 
 ## Status
