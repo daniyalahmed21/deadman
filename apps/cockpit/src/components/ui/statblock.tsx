@@ -22,6 +22,21 @@ const COLS: Record<number, string> = {
 const sentence = (v: ReactNode): ReactNode =>
   typeof v === "string" && v.length > 0 ? v.charAt(0).toUpperCase() + v.slice(1) : v;
 
+/** Loading placeholder shaped like the dark KPI block. */
+export function StatBlockSkeleton({ cells = 4 }: { cells?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-panel-border lg:grid-cols-4">
+      {Array.from({ length: cells }).map((_, i) => (
+        <div key={i} className="space-y-3 bg-panel px-5 py-4">
+          <div className="h-3 w-16 animate-pulse rounded bg-white/10" />
+          <div className="h-6 w-12 animate-pulse rounded bg-white/10" />
+          <div className="h-3 w-20 animate-pulse rounded bg-white/5" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The signature dark KPI block: one rounded near-black panel holding evenly divided cells.
  * Big white figures, a muted foot line, and an optional colored delta - mirrors the reference.

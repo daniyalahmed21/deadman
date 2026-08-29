@@ -2,7 +2,8 @@ import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page";
-import { StatBlock } from "@/components/ui/statblock";
+import { StatBlock, StatBlockSkeleton } from "@/components/ui/statblock";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Donut } from "@/components/ui/donut";
 import { usePoll } from "@/lib/usePoll";
 import { num } from "@/lib/utils";
@@ -17,7 +18,11 @@ export function Cost() {
     return (
       <div className="space-y-5">
         <PageHeader title="Cost" subtitle="Token usage and spend" />
-        <p className="text-sm italic text-muted-foreground">Loading</p>
+        <StatBlockSkeleton />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.6fr]">
+          <Skeleton className="h-56 rounded-2xl" />
+          <Skeleton className="h-56 rounded-2xl" />
+        </div>
       </div>
     );
   }

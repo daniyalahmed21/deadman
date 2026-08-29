@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill, TierBadge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page";
-import { StatBlock } from "@/components/ui/statblock";
+import { StatBlock, StatBlockSkeleton } from "@/components/ui/statblock";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Donut } from "@/components/ui/donut";
 import { usePoll } from "@/lib/usePoll";
 import { num } from "@/lib/utils";
@@ -28,6 +29,20 @@ export function Safety() {
     { label: "Approved", value: executedByTier("GATED"), color: "var(--warning)" },
     { label: "Refused", value: refused.length, color: "var(--destructive)" },
   ];
+
+  if (!policy) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Safety" subtitle="Frozen, fail-closed blast-radius policy" />
+        <StatBlockSkeleton />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

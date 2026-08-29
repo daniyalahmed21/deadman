@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill, StatusPill } from "@/components/ui/badge";
 import { EvidenceList } from "@/components/ui/evidence";
 import { PageHeader } from "@/components/ui/page";
-import { StatBlock } from "@/components/ui/statblock";
+import { StatBlock, StatBlockSkeleton } from "@/components/ui/statblock";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Gauge } from "@/components/ui/gauge";
 import { LiveFeed } from "@/components/LiveFeed";
 import { DemoControls } from "@/components/DemoControls";
@@ -24,6 +25,26 @@ const PHASES: { key: Phase; label: string }[] = [
 export function Overview({ feed }: { feed: DashboardFeed }) {
   const { state, online } = feed;
   const events = useEventStream();
+
+  // First-load skeleton: quiet placeholders shaped like the real layout.
+  if (!state) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Overview" subtitle="connecting" />
+        <StatBlockSkeleton />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <Skeleton className="h-44 rounded-2xl" />
+            <Skeleton className="h-64 rounded-2xl" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-48 rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const inv = state?.investigation ?? null;
   const audit = state?.audit ?? [];
@@ -124,11 +145,13 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
 
                   <div className="border-t pt-4">
                     <EvidenceList
-                      items={inv.evidence.filter(
-                        (e) =>
-                          !e.startsWith("suspected change") &&
-                          !(inv.change?.suspected && /no correlated deploy|no correlated/i.test(e)),
-                      )}
+                      items={inv.evidence
+                        .filter(
+                          (e) =>
+                            !e.startsWith("suspected change") &&
+                            !(inv.change?.suspected && /no correlated deploy|no correlated/i.test(e)),
+                        )
+                        .slice(0, 3)}
                     />
                   </div>
                 </>
