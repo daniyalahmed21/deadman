@@ -25,8 +25,9 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    // In Docker the harness is another service (`trueforge`); locally it's on the host.
     proxy: {
-      "/api": { target: "http://localhost:8790", changeOrigin: true },
+      "/api": { target: process.env.TRUEFORGE_URL ?? "http://localhost:8790", changeOrigin: true },
     },
   },
 });

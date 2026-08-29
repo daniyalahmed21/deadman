@@ -20,3 +20,6 @@ packages/engine/.deadman-memory.json
 
 # coverage output
 coverage/
+
+# Local internal kubeconfig for the dockerized engine (contains cluster certs)
+deploy/kube/

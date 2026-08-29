@@ -198,8 +198,11 @@ too ([`alerts/persist.ts`](src/alerts/persist.ts)): it replays from Redis on boo
 every mutating call, so a restart never loses the record of what the agent did to production.
 
 ```sh
-docker compose -f docker-compose.redis.yml up -d   # Redis for the queue
+docker compose up -d redis                          # Redis for the queue (from the repo root)
 DEADMAN_ALERTS=1 pnpm start                         # enable ingestion
+
+# or run the whole stack in Docker (redis + trueforge + engine + cockpit + console):
+#   docker compose up -d --build      (see the root README / docker-compose.yml)
 
 # fire a Datadog-shaped alert (loopback is trusted; remote callers need the bearer token)
 curl -X POST http://localhost:9000/alerts -H 'Content-Type: application/json' \
