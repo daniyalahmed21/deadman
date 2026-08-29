@@ -7,7 +7,15 @@
     "dev": "pnpm --filter @deadman/cockpit dev",
     "engine": "pnpm --filter deadman-mcp start",
     "test": "pnpm --filter deadman-mcp test",
+    "test:coverage": "pnpm --filter deadman-mcp test:coverage",
     "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
     "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "typescript-eslint": "^8.68.0"
   }
 }

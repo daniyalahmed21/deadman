@@ -139,7 +139,7 @@ function applyPatch(obj: any, patch: { mib?: number; replicas?: number }): void 
 function readMemoryQuota(): { hardMib: number; usedMib: number } | null {
   const r = nsTry(["get", "resourcequota", "-o", "json"]);
   if (!r.ok) return null;
-  let items: any[] = [];
+  let items: any[];
   try {
     items = JSON.parse(r.out).items ?? [];
   } catch {
@@ -342,7 +342,7 @@ export const kindBackend: ClusterBackend = {
     // Read the deployment's ReplicaSets and diff consecutive revisions into typed change events.
     const r = nsTry(["get", "rs", "-o", "json"]);
     if (!r.ok) return [];
-    let items: Array<Record<string, any>> = [];
+    let items: Array<Record<string, any>>;
     try {
       items = (JSON.parse(r.out).items ?? []) as Array<Record<string, any>>;
     } catch {
