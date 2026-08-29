@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import type { ClusterBackend, HealthSnapshot, Metrics } from "../backend.js";
 import { buildInvestigation } from "../investigate.js";
 import type { InvestigationResult } from "../fixtures.js";
-import type { ChangeEvent } from "@deadman/shared";
+import type { ChangeEvent, RehearsalResult } from "@deadman/shared";
 
 const CTX = process.env.KIND_CONTEXT ?? "kind-deadman";
 const NS = process.env.KIND_NAMESPACE ?? "prod";
@@ -41,6 +41,26 @@ function nsTry(args: string[]): { ok: boolean; out: string } {
 function nsStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
   try {
     const out = execFileSync("kubectl", ["--context", CTX, "-n", NS, ...args], {
+      encoding: "utf8",
+      input: stdin,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { code: 0, out: out.trim(), err: "" };
+  } catch (e) {
+    const x = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: x.status ?? 1, out: String(x.stdout ?? "").trim(), err: String(x.stderr ?? "").trim() };
+  }
+}
+
+/** Short random suffix for an ephemeral rehearsal namespace. */
+function randId(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+/** Cluster-scoped kubectl that pipes a manifest on stdin (applies to the manifest's own namespace). */
+function cmdStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
+  try {
+    const out = execFileSync("kubectl", ["--context", CTX, ...args], {
       encoding: "utf8",
       input: stdin,
       stdio: ["pipe", "pipe", "pipe"],
@@ -240,6 +260,64 @@ export const kindBackend: ClusterBackend = {
       }
     }
     return null;
+  },
+  rehearseInNamespace(deployment, memMib) {
+    const beforeLimit = memLimit(deployment);
+    const before = { healthy: beforeLimit >= HEALTHY_MEM_MIB, memLimitMib: beforeLimit };
+    const fail = (detail: string): RehearsalResult => ({
+      action: "bump_memory", target: deployment, backend: "kind", rehearsed: false, pass: false, before, after: before, detail,
+    });
+
+    const raw = nsTry(["get", "deploy", deployment, "-o", "json"]);
+    if (!raw.ok) return fail(`could not read ${deployment}: ${raw.out}`);
+    let obj: any;
+    try {
+      obj = JSON.parse(raw.out);
+    } catch {
+      return fail("could not parse deployment spec");
+    }
+
+    const rehNs = `deadman-rehearse-${randId()}`;
+    try {
+      // Clone the spec: fix the limit, force 1 replica, strip identity so it applies cleanly.
+      const c = obj.spec.template.spec.containers[0];
+      c.resources = { ...(c.resources ?? {}), limits: { ...(c.resources?.limits ?? {}), memory: `${memMib}Mi` } };
+      obj.spec.replicas = 1;
+      delete obj.status;
+      const md = obj.metadata ?? {};
+      for (const k of ["uid", "resourceVersion", "creationTimestamp", "generation", "managedFields"]) delete md[k];
+      if (md.annotations) delete md.annotations["kubectl.kubernetes.io/last-applied-configuration"];
+      md.namespace = rehNs;
+      obj.metadata = md;
+      const manifest = JSON.stringify(obj);
+
+      runTry(["create", "namespace", rehNs]);
+      const applied = cmdStdin(["apply", "-f", "-"], manifest);
+      if (applied.code !== 0) return fail(`rehearsal apply failed: ${applied.err || applied.out}`);
+
+      // Bounded watch: wait for the rollout (or time out), then read the clone's real pod state.
+      runTry(["-n", rehNs, "rollout", "status", `deploy/${deployment}`, "--timeout=60s"]);
+      const st = runTry([
+        "-n", rehNs, "get", "pods", "-l", `app=${deployment}`, "-o",
+        'jsonpath={range .items[*]}{.status.phase}|{.status.containerStatuses[0].restartCount}|{.status.containerStatuses[0].lastState.terminated.reason}{"\\n"}{end}',
+      ]);
+      const lines = st.ok ? st.out.split("\n").filter(Boolean) : [];
+      const oom = lines.some((l) => /OOMKilled/i.test(l));
+      const running = lines.some((l) => l.startsWith("Running")) && !oom;
+      const after = { healthy: running, memLimitMib: memMib };
+      return {
+        action: "bump_memory", target: deployment, backend: "kind", rehearsed: true, pass: running,
+        before, after,
+        detail: running
+          ? `clone ran healthy at ${memMib}Mi (no OOM in the watch window; idle load only, not a load test)`
+          : oom
+            ? `clone OOMKilled at ${memMib}Mi in the rehearsal namespace`
+            : `clone did not become ready at ${memMib}Mi`,
+      };
+    } finally {
+      // Fire-and-forget teardown: never block the tool response on namespace deletion.
+      runTry(["delete", "namespace", rehNs, "--wait=false"]);
+    }
   },
   events(deployment) {
     const r = nsTry([

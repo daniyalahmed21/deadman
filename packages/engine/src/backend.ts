@@ -13,7 +13,7 @@ import * as sim from "./cluster.js";
 import { kindBackend } from "./backends/kind.js";
 import { buildInvestigation } from "./investigate.js";
 import type { InvestigationResult } from "./fixtures.js";
-import type { ChangeEvent } from "@deadman/shared";
+import type { ChangeEvent, RehearsalResult } from "@deadman/shared";
 import { demoMode } from "./config.js";
 
 export interface HealthSnapshot {
@@ -81,6 +81,12 @@ export interface ClusterBackend {
    * against this directly. Optional: kind only.
    */
   namespaceMemoryQuota?(): { hardMib: number; usedMib: number } | null;
+  /**
+   * Real sandbox rehearsal: clone the deployment into a throwaway namespace at `memMib`, watch
+   * whether the clone stays healthy (no OOM), then delete the namespace. Faithful for the memory
+   * case, but idle-load only. Optional: kind only; the sim uses an in-process state fork instead.
+   */
+  rehearseInNamespace?(deployment: string, memMib: number): RehearsalResult;
 }
 
 const simBackend: ClusterBackend = {
