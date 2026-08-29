@@ -6,5 +6,8 @@ packages:
 # msgpackr-extract is BullMQ's OPTIONAL native msgpack accelerator; the pure-JS fallback is
 # fine, so we explicitly decline its build script (silences the ignored-build hard error).
 allowBuilds:
+  # OpenUI language core — a dependency of @truefoundry/trueforge-ui; its build must run for the
+  # generative-UI renderer to work, so we allow it.
+  '@openuidev/lang-core': true
   esbuild: true
   msgpackr-extract: false
