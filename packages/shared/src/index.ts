@@ -85,6 +85,20 @@ export interface PodMetric {
   cpuMillis: number;
 }
 
+/** Result of rehearsing a remediation in an isolated fork of the cluster before touching prod. */
+export interface RehearsalResult {
+  action: string;
+  target: string;
+  backend: BackendMode;
+  /** true if we actually ran the action in a fork (false = backend can't rehearse in-process) */
+  rehearsed: boolean;
+  /** did the fork become healthy after the action? */
+  pass: boolean;
+  before: { healthy: boolean; memLimitMib: number };
+  after: { healthy: boolean; memLimitMib: number };
+  detail: string;
+}
+
 export interface DashboardState {
   mode: BackendMode;
   service: string;

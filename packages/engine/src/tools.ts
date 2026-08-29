@@ -27,6 +27,7 @@ import { buildPostmortem } from "./postmortem.js";
 import { emit } from "./events.js";
 import { armWatchdog } from "./watchdog.js";
 import { correlateChange, symptomOf } from "./correlate.js";
+import { rehearse } from "./rehearse.js";
 
 const WATCHDOG_WINDOW_MS = Number(process.env.DEADMAN_WATCHDOG_WINDOW_MS ?? 4000);
 const WATCHDOG_INTERVAL_MS = Number(process.env.DEADMAN_WATCHDOG_INTERVAL_MS ?? 1000);
@@ -275,6 +276,39 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ tool, target }) =>
       text(`[dry-run] ${tool} on ${target} → would apply; no changes made (server-side validation OK)`),
+  );
+
+  server.registerTool(
+    "rehearse_remediation",
+    {
+      title: "Rehearse remediation in a sandbox",
+      description:
+        "Fork the current cluster state into an isolated sandbox, apply the proposed action to " +
+        "the fork, and report whether the fork became healthy - BEFORE the real gated action runs. " +
+        "Does NOT touch prod. Use this to prove a fix works (or that a wrong fix does not) before approval.",
+      inputSchema: {
+        action: z.string().describe("Remediation tool to rehearse, e.g. bump_memory"),
+        target: z.string().describe("Deployment / target"),
+        mib: z.number().int().positive().optional().describe("New memory limit (for bump_memory)"),
+        replicas: z.number().int().min(0).optional().describe("Target replicas (for scale_deployment)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ action, target, mib, replicas }) => {
+      const result = rehearse(action, target, { mib, replicas });
+      emit({
+        kind: "signal",
+        phase: "remediate",
+        target,
+        severity: result.rehearsed ? (result.pass ? "success" : "warn") : "info",
+        message: result.rehearsed
+          ? result.pass
+            ? `Rehearsed in sandbox: PASS - ${action} resolves ${target} (${result.before.memLimitMib}Mi -> ${result.after.memLimitMib}Mi, healthy)`
+            : `Rehearsed in sandbox: FAIL - ${action} does NOT resolve ${target} (root cause unaddressed)`
+          : `Rehearsal skipped: ${result.detail}`,
+      });
+      return json(result);
+    },
   );
 
   server.registerTool(

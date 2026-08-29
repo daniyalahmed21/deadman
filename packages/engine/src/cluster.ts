@@ -31,7 +31,7 @@ export interface DeploymentState {
 
 export type Scenario = "oom" | "crashloop" | "imagepull";
 
-interface ClusterState {
+export interface ClusterState {
   scenario: Scenario;
   deployments: Record<string, DeploymentState>;
   pods: Record<string, PodState>;
@@ -66,6 +66,16 @@ let state: ClusterState = seed(envScenario());
 /** Reset to the seeded failing state (used by tests / re-runs). */
 export function resetCluster(): void {
   state = seed(envScenario());
+}
+
+/** Deep-copy the whole cluster state - the fork point for sandbox rehearsal. */
+export function snapshotState(): ClusterState {
+  return structuredClone(state);
+}
+
+/** Swap the live state back to a snapshot - discards a rehearsal fork, prod untouched. */
+export function restoreState(snapshot: ClusterState): void {
+  state = snapshot;
 }
 
 /** Set the active failure scenario (chaos seeder for the sim). */
