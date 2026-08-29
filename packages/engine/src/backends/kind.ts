@@ -19,60 +19,43 @@ const SEED = fileURLToPath(new URL("../../k8s/seed.yaml", import.meta.url));
 /** A resolved deployment has a memory limit at or above this (Mi). */
 const HEALTHY_MEM_MIB = 512;
 
-function run(args: string[]): string {
-  return execFileSync("kubectl", ["--context", CTX, ...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
-}
-function ns(args: string[]): string {
-  return run(["-n", NS, ...args]);
-}
-function nsTry(args: string[]): { ok: boolean; out: string } {
+/** The one kubectl invocation. Never throws; returns exit code plus captured stdout/stderr.
+ *  `input` pipes a manifest on stdin (for `diff` / `apply -f -`). */
+function exec(args: string[], input?: string): { code: number; out: string; err: string } {
   try {
-    return { ok: true, out: ns(args) };
-  } catch (e) {
-    const err = e as { stderr?: string; stdout?: string; message?: string };
-    return { ok: false, out: String(err.stderr || err.stdout || err.message || "").trim() };
-  }
-}
-
-/** Namespaced kubectl that pipes a manifest on stdin (for `diff` / `apply -f -`). */
-function nsStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
-  try {
-    const out = execFileSync("kubectl", ["--context", CTX, "-n", NS, ...args], {
-      encoding: "utf8",
-      input: stdin,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const out = execFileSync("kubectl", ["--context", CTX, ...args], { encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"] });
     return { code: 0, out: out.trim(), err: "" };
   } catch (e) {
     const x = e as { status?: number; stdout?: string; stderr?: string };
     return { code: x.status ?? 1, out: String(x.stdout ?? "").trim(), err: String(x.stderr ?? "").trim() };
   }
 }
+
+/** Throwing variant, for mutations that should fail loudly. */
+function run(args: string[]): string {
+  const r = exec(args);
+  if (r.code !== 0) throw new Error(r.err || r.out || `kubectl ${args.join(" ")} failed`);
+  return r.out;
+}
+/** Namespaced throwing variant. */
+const ns = (args: string[]): string => run(["-n", NS, ...args]);
+
+/** Non-throwing: {ok, out} where out is stdout on success, else the error text. */
+const runTry = (args: string[]): { ok: boolean; out: string } => {
+  const r = exec(args);
+  return { ok: r.code === 0, out: r.code === 0 ? r.out : r.err || r.out };
+};
+const nsTry = (args: string[]): { ok: boolean; out: string } => runTry(["-n", NS, ...args]);
+/** Namespaced exec with a manifest on stdin. */
+const nsStdin = (args: string[], stdin: string) => exec(["-n", NS, ...args], stdin);
 
 /** Short random suffix for an ephemeral rehearsal namespace. */
 function randId(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-/** Cluster-scoped kubectl that pipes a manifest on stdin (applies to the manifest's own namespace). */
-function cmdStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
-  try {
-    const out = execFileSync("kubectl", ["--context", CTX, ...args], {
-      encoding: "utf8",
-      input: stdin,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    return { code: 0, out: out.trim(), err: "" };
-  } catch (e) {
-    const x = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: x.status ?? 1, out: String(x.stdout ?? "").trim(), err: String(x.stderr ?? "").trim() };
-  }
-}
-
-/** Trim `kubectl diff` output to the meaningful hunks: drop temp-path headers and metadata noise. */
+/** Trim `kubectl diff` output to the meaningful hunks: drop temp-path headers and metadata noise.
+ *  Cosmetic only; the structured `changes` field is the source of truth. */
 function cleanDiff(out: string): string {
   return out
     .split("\n")
@@ -80,16 +63,6 @@ function cleanDiff(out: string): string {
     .filter((l) => !/last-applied-configuration|generation:|creationTimestamp:|"apiVersion"/.test(l))
     .join("\n")
     .trim();
-}
-
-/** Cluster-scoped (no namespace) kubectl, for node operations. */
-function runTry(args: string[]): { ok: boolean; out: string } {
-  try {
-    return { ok: true, out: run(args) };
-  } catch (e) {
-    const err = e as { stderr?: string; stdout?: string; message?: string };
-    return { ok: false, out: String(err.stderr || err.stdout || err.message || "").trim() };
-  }
 }
 
 /** Parse a k8s memory quantity ("256Mi", "1Gi", "512M") to MiB. */
@@ -135,6 +108,61 @@ function readMetrics(deployment: string): Metrics {
   const workingSetMib = pods.reduce((m, p) => Math.max(m, p.memMib), 0);
   const cpuMillis = pods.reduce((s, p) => s + p.cpuMillis, 0);
   return { workingSetMib, cpuMillis, pods };
+}
+
+// --- Deployment-object helpers (the only place that knows kubectl JSON shape) ------------
+
+/** Read the live deployment as a plain object with server-managed noise stripped, or null. */
+function liveDeployObject(deployment: string): any | null {
+  const r = nsTry(["get", "deploy", deployment, "-o", "json"]);
+  if (!r.ok) return null;
+  try {
+    const obj = JSON.parse(r.out);
+    delete obj.status;
+    if (obj.metadata) delete obj.metadata.managedFields;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+/** Apply an intent patch to a deployment object. kubectl field paths live only here. */
+function applyPatch(obj: any, patch: { mib?: number; replicas?: number }): void {
+  if (patch.mib !== undefined) {
+    const c = obj.spec.template.spec.containers[0];
+    c.resources = { ...(c.resources ?? {}), limits: { ...(c.resources?.limits ?? {}), memory: `${patch.mib}Mi` } };
+  }
+  if (patch.replicas !== undefined) obj.spec.replicas = patch.replicas;
+}
+
+/** The namespace's limits.memory ResourceQuota (hard cap and current use, in MiB), or null. */
+function readMemoryQuota(): { hardMib: number; usedMib: number } | null {
+  const r = nsTry(["get", "resourcequota", "-o", "json"]);
+  if (!r.ok) return null;
+  let items: any[] = [];
+  try {
+    items = JSON.parse(r.out).items ?? [];
+  } catch {
+    return null;
+  }
+  for (const q of items) {
+    const hard = q.status?.hard?.["limits.memory"] ?? q.spec?.hard?.["limits.memory"];
+    if (hard) return { hardMib: parseMemMib(String(hard)), usedMib: parseMemMib(String(q.status?.used?.["limits.memory"] ?? "0")) };
+  }
+  return null;
+}
+
+/** Warn if a memory bump would exceed the namespace quota (a Deployment dry-run misses pod-level quota). */
+function memoryQuotaWarning(deployment: string, mib?: number): string | null {
+  if (mib === undefined) return null;
+  const q = readMemoryQuota();
+  if (!q) return null;
+  const before = memLimit(deployment);
+  if (mib <= before) return null;
+  const projected = q.usedMib + (mib - before) * specReplicas(deployment);
+  return projected > q.hardMib
+    ? `Exceeds namespace memory quota: this change projects ${projected}Mi against a ${q.hardMib}Mi cap (${q.usedMib}Mi used now).`
+    : null;
 }
 
 export const kindBackend: ClusterBackend = {
@@ -212,25 +240,17 @@ export const kindBackend: ClusterBackend = {
     const r = nsTry(["describe", "pod", "-l", `app=${deployment}`]);
     return r.ok ? r.out : `(describe failed: ${r.out})`;
   },
-  previewChange(deployment, mutate) {
-    const live = nsTry(["get", "deploy", deployment, "-o", "json"]);
-    if (!live.ok) return { rawDiff: "", warnings: [`preview unavailable: ${live.out}`] };
-    let obj: any;
-    try {
-      obj = JSON.parse(live.out);
-    } catch {
-      return { rawDiff: "", warnings: ["preview unavailable: could not parse live object"] };
-    }
-    delete obj.status;
-    if (obj.metadata) delete obj.metadata.managedFields;
-    mutate(obj);
+  previewChange(deployment, patch) {
+    const obj = liveDeployObject(deployment);
+    if (!obj) return { rawDiff: "", warnings: [`preview unavailable for ${deployment}`] };
+    applyPatch(obj, patch);
     const manifest = JSON.stringify(obj);
 
     // Real field diff: exit 1 means "differences found" (not an error); >1 is a real failure.
     const d = nsStdin(["diff", "-f", "-"], manifest);
     const rawDiff = d.code <= 1 ? cleanDiff(d.out) : "";
 
-    // Real validity check: full admission chain (quota, limitrange, webhooks) without persisting.
+    // Real validity check: the full admission chain (limitrange, webhooks) without persisting.
     const warnings: string[] = [];
     const v = nsStdin(["apply", "--dry-run=server", "-f", "-"], manifest);
     if (v.code !== 0) {
@@ -241,64 +261,46 @@ export const kindBackend: ClusterBackend = {
         if (/^Warning:/i.test(t)) warnings.push(t);
       }
     }
+    // Pod-level ResourceQuota is not exercised by a Deployment dry-run, so check headroom directly.
+    const quota = memoryQuotaWarning(deployment, patch.mib);
+    if (quota) warnings.push(quota);
+
     return { rawDiff, warnings };
   },
-  namespaceMemoryQuota() {
-    const r = nsTry(["get", "resourcequota", "-o", "json"]);
-    if (!r.ok) return null;
-    let items: any[] = [];
-    try {
-      items = JSON.parse(r.out).items ?? [];
-    } catch {
-      return null;
-    }
-    for (const q of items) {
-      const hard = q.status?.hard?.["limits.memory"] ?? q.spec?.hard?.["limits.memory"];
-      if (hard) {
-        const used = q.status?.used?.["limits.memory"] ?? "0";
-        return { hardMib: parseMemMib(String(hard)), usedMib: parseMemMib(String(used)) };
-      }
-    }
-    return null;
-  },
-  rehearseInNamespace(deployment, memMib) {
-    const beforeLimit = memLimit(deployment);
+  rehearse(action, target, args) {
+    const beforeLimit = memLimit(target);
     const before = { healthy: beforeLimit >= HEALTHY_MEM_MIB, memLimitMib: beforeLimit };
-    const fail = (detail: string): RehearsalResult => ({
-      action: "bump_memory", target: deployment, backend: "kind", rehearsed: false, pass: false, before, after: before, detail,
+    const skip = (detail: string): RehearsalResult => ({
+      action, target, backend: "kind", rehearsed: false, pass: false, before, after: before, detail,
     });
 
-    const raw = nsTry(["get", "deploy", deployment, "-o", "json"]);
-    if (!raw.ok) return fail(`could not read ${deployment}: ${raw.out}`);
-    let obj: any;
-    try {
-      obj = JSON.parse(raw.out);
-    } catch {
-      return fail("could not parse deployment spec");
+    // Real rehearsal is implemented for the memory case; other actions rely on the watchdog.
+    const memMib = args.mib;
+    if (action !== "bump_memory" || memMib === undefined) {
+      return skip(`kind rehearsal is implemented for bump_memory; ${action} relies on the auto-rollback watchdog.`);
     }
+    const obj = liveDeployObject(target);
+    if (!obj) return skip(`could not read ${target}`);
 
     const rehNs = `deadman-rehearse-${randId()}`;
     try {
-      // Clone the spec: fix the limit, force 1 replica, strip identity so it applies cleanly.
-      const c = obj.spec.template.spec.containers[0];
-      c.resources = { ...(c.resources ?? {}), limits: { ...(c.resources?.limits ?? {}), memory: `${memMib}Mi` } };
+      // Clone the spec at the proposed limit, forced to 1 replica, with identity stripped.
+      applyPatch(obj, { mib: memMib });
       obj.spec.replicas = 1;
-      delete obj.status;
-      const md = obj.metadata ?? {};
-      for (const k of ["uid", "resourceVersion", "creationTimestamp", "generation", "managedFields"]) delete md[k];
+      const md = obj.metadata;
+      for (const k of ["uid", "resourceVersion", "creationTimestamp", "generation"]) delete md[k];
       if (md.annotations) delete md.annotations["kubectl.kubernetes.io/last-applied-configuration"];
       md.namespace = rehNs;
-      obj.metadata = md;
       const manifest = JSON.stringify(obj);
 
       runTry(["create", "namespace", rehNs]);
-      const applied = cmdStdin(["apply", "-f", "-"], manifest);
-      if (applied.code !== 0) return fail(`rehearsal apply failed: ${applied.err || applied.out}`);
+      const applied = exec(["apply", "-f", "-"], manifest);
+      if (applied.code !== 0) return skip(`rehearsal apply failed: ${applied.err || applied.out}`);
 
       // Bounded watch: wait for the rollout (or time out), then read the clone's real pod state.
-      runTry(["-n", rehNs, "rollout", "status", `deploy/${deployment}`, "--timeout=60s"]);
+      runTry(["-n", rehNs, "rollout", "status", `deploy/${target}`, "--timeout=60s"]);
       const st = runTry([
-        "-n", rehNs, "get", "pods", "-l", `app=${deployment}`, "-o",
+        "-n", rehNs, "get", "pods", "-l", `app=${target}`, "-o",
         'jsonpath={range .items[*]}{.status.phase}|{.status.containerStatuses[0].restartCount}|{.status.containerStatuses[0].lastState.terminated.reason}{"\\n"}{end}',
       ]);
       const lines = st.ok ? st.out.split("\n").filter(Boolean) : [];
@@ -306,7 +308,7 @@ export const kindBackend: ClusterBackend = {
       const running = lines.some((l) => l.startsWith("Running")) && !oom;
       const after = { healthy: running, memLimitMib: memMib };
       return {
-        action: "bump_memory", target: deployment, backend: "kind", rehearsed: true, pass: running,
+        action, target, backend: "kind", rehearsed: true, pass: running,
         before, after,
         detail: running
           ? `clone ran healthy at ${memMib}Mi (no OOM in the watch window; idle load only, not a load test)`

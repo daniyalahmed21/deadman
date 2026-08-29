@@ -4,11 +4,11 @@
  * the BLAST RADIUS (pods affected, disruption, reversibility, a severity badge), and the ROLLBACK
  * plan (the inverse + captured before-state). Read-only: it reads live state and mutates nothing.
  *
- * The sim computes a deterministic, coherent preview; a real kubectl backend would populate
- * `rawDiff` from `kubectl diff` and `warnings` from `kubectl apply --dry-run=server`.
+ * The sim computes a deterministic, coherent preview; on kind the backend populates `rawDiff`
+ * from a real `kubectl diff` and `warnings` from a server dry-run plus a quota headroom check.
  */
 
-import { backend } from "./backend.js";
+import { backend, type RemediationPatch } from "./backend.js";
 import { classifyTool } from "./classifier.js";
 import type { BlastRadius, RemediationPreview } from "@deadman/shared";
 
@@ -23,8 +23,8 @@ function severity(b: Pick<BlastRadius, "stateful" | "reversible" | "disruption" 
  * On a real cluster, replace the templated diff and warnings with a REAL server dry-run + kubectl
  * diff. On the sim (no `previewChange`), the templated preview is returned unchanged.
  */
-function withRealPreview(result: RemediationPreview, deployment: string, mutate: (obj: any) => void): RemediationPreview {
-  const probe = backend.previewChange?.(deployment, mutate);
+function withRealPreview(result: RemediationPreview, deployment: string, patch: RemediationPatch): RemediationPreview {
+  const probe = backend.previewChange?.(deployment, patch);
   if (!probe) return result;
   return { ...result, rawDiff: probe.rawDiff || result.rawDiff, warnings: [...result.warnings, ...probe.warnings] };
 }
@@ -40,7 +40,7 @@ export function previewRemediation(action: string, target: string, args: { mib?:
       const after = args.mib ?? before;
       const blast: BlastRadius = { podsAffected: replicas, disruption: "rolling", stateful: false, reversible: true, severity: "low" };
       blast.severity = severity(blast);
-      let result = withRealPreview(
+      return withRealPreview(
         {
           ...base,
           summary: `Raise ${target} memory limit ${before}Mi -> ${after}Mi (rolling restart, ${replicas} pods)`,
@@ -51,25 +51,8 @@ export function previewRemediation(action: string, target: string, args: { mib?:
           destructive: true,
         },
         target,
-        (o) => {
-          o.spec.template.spec.containers[0].resources.limits.memory = `${after}Mi`;
-        },
+        { mib: after },
       );
-      // A Deployment dry-run does NOT trigger pod-level ResourceQuota; check headroom directly.
-      const q = backend.namespaceMemoryQuota?.();
-      if (q && after > before) {
-        const projected = q.usedMib + (after - before) * replicas;
-        if (projected > q.hardMib) {
-          result = {
-            ...result,
-            warnings: [
-              ...result.warnings,
-              `Exceeds namespace memory quota: this bump projects ${projected}Mi against a ${q.hardMib}Mi cap (${q.usedMib}Mi used now).`,
-            ],
-          };
-        }
-      }
-      return result;
     }
     case "delete_pvc": {
       const blast: BlastRadius = { podsAffected: 0, disruption: "none", stateful: true, reversible: false, severity: "high" };
@@ -128,9 +111,7 @@ export function previewRemediation(action: string, target: string, args: { mib?:
           destructive: true,
         },
         target,
-        (o) => {
-          o.spec.replicas = to;
-        },
+        { replicas: to },
       );
     }
     default: {

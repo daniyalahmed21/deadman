@@ -10,7 +10,7 @@
  */
 
 import { demoMode } from "./config.js";
-import type { ChangeEvent } from "@deadman/shared";
+import type { ChangeEvent, RehearsalResult } from "@deadman/shared";
 
 export interface PodState {
   name: string;
@@ -308,4 +308,50 @@ export function cordonNodeSim(node: string): string {
 /** GATED: drain a node (only reached when node_count > 1; on a single node it is refused). */
 export function drainNodeSim(node: string): string {
   return `drained ${node} (evicted all pods)`;
+}
+
+// --- Sandbox rehearsal (sim) -----------------------------------------------------------
+
+const REHEARSABLE = new Set(["bump_memory", "rollback_deploy", "restart_pod", "scale_deployment"]);
+
+/** Apply a proposed action inside the current (forked) state via the causal mutators above. */
+function applyInFork(action: string, target: string, args: { mib?: number; replicas?: number }): string {
+  switch (action) {
+    case "bump_memory":
+      return bumpMemory(target, args.mib ?? 0);
+    case "rollback_deploy":
+      return rollbackDeploy(target);
+    case "restart_pod":
+      return restartPods(target);
+    case "scale_deployment":
+      return scaleDeploymentSim(target, args.replicas ?? 0);
+    default:
+      throw new Error(`no rehearsal model for ${action}`);
+  }
+}
+
+/**
+ * Rehearse `action` in an isolated deep-copy fork of the sim state and report whether the fork
+ * became healthy. Prod state is ALWAYS restored - rehearsal never touches the live state. The fix
+ * runs through the SAME causal mutators the prod path uses, so a wrong fix genuinely fails.
+ */
+export function rehearseSim(action: string, target: string, args: { mib?: number; replicas?: number } = {}): RehearsalResult {
+  const h = snapshotHealth(target);
+  const before = { healthy: h.healthy, memLimitMib: h.memLimitMib };
+  if (!REHEARSABLE.has(action)) {
+    return { action, target, backend: "sim", rehearsed: false, pass: false, before, after: before, detail: `no rehearsal model for ${action}` };
+  }
+  const saved = snapshotState(); // fork point
+  try {
+    const outcome = applyInFork(action, target, args);
+    const a = snapshotHealth(target);
+    const after = { healthy: a.healthy, memLimitMib: a.memLimitMib };
+    return {
+      action, target, backend: "sim", rehearsed: true, pass: a.healthy,
+      before, after,
+      detail: a.healthy ? `fork became healthy: ${outcome}` : `fork still unhealthy after ${action}: ${outcome}`,
+    };
+  } finally {
+    restoreState(saved); // ALWAYS discard the fork - prod state untouched
+  }
 }
