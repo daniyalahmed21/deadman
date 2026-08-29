@@ -74,7 +74,14 @@ export class BullAlertQueue implements AlertQueue {
     // BullMQ still collapses them on the shared jobId, so the worst case is a cosmetic mislabel.
     const existing = await this.queue.getJob(alert.dedupKey);
     if (existing) {
-      return { accepted: false, dedupKey: alert.dedupKey, depth: await this.depth() };
+      // A DEAD-LETTERED job must not suppress recovery: once the downstream (TrueForge) is healthy
+      // again, a re-fire for the same incident should reopen processing, not keep returning
+      // duplicate until the failed job is eventually evicted. Drop the failed job and re-enqueue.
+      const state = await existing.getState();
+      if (state !== "failed") {
+        return { accepted: false, dedupKey: alert.dedupKey, depth: await this.depth() };
+      }
+      await existing.remove();
     }
     await this.queue.add("alert", alert, { jobId: alert.dedupKey });
     return { accepted: true, dedupKey: alert.dedupKey, depth: await this.depth() };

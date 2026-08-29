@@ -70,11 +70,20 @@ function alertBrief(alert: NormalizedAlert): string {
 /**
  * Open a TrueForge session for this alert and post the alert as the first turn.
  * Any non-2xx throws — the caller (the BullMQ worker) turns that into a retry.
+ *
+ * `onSessionCreated` fires the instant the session exists, BEFORE the turn is posted. That lets
+ * the caller record the session for idempotency immediately, so if the turn request fails and
+ * BullMQ retries, it reuses this session instead of opening a second one for the same incident.
  */
-export async function openSessionForAlert(alert: NormalizedAlert): Promise<OpenedSession> {
+export async function openSessionForAlert(
+  alert: NormalizedAlert,
+  onSessionCreated?: (sessionId: string) => Promise<void> | void,
+): Promise<OpenedSession> {
   const session = await tfFetch("/api/v1/sessions", { agent: { name: alertConfig.agentName } });
   const sessionId = String(session.id ?? (session.data as Record<string, unknown> | undefined)?.id ?? "");
   if (!sessionId) throw new Error(`TrueForge session create returned no id: ${JSON.stringify(session).slice(0, 200)}`);
+
+  await onSessionCreated?.(sessionId);
 
   const turn = await tfFetch(`/api/v1/sessions/${sessionId}/turns`, {
     input: [{ type: "user.message", content: alertBrief(alert) }],

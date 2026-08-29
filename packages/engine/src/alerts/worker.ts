@@ -21,7 +21,10 @@ export interface AlertWorker {
   close(): Promise<void>;
 }
 
-export type AlertHandler = (alert: NormalizedAlert) => Promise<{ sessionId: string }>;
+export type AlertHandler = (
+  alert: NormalizedAlert,
+  onSessionCreated?: (sessionId: string) => Promise<void> | void,
+) => Promise<{ sessionId: string }>;
 
 /**
  * Handle one alert exactly once. Idempotency guard: if a session already exists for this alert
@@ -43,8 +46,10 @@ export async function handleAlertOnce(
     });
     return { sessionId: existing, deduped: true };
   }
-  const { sessionId } = await handler(alert);
-  await idem.markSession(alert.dedupKey, sessionId);
+  // Record the session the instant it exists (before the first turn is posted), so a turn failure
+  // + BullMQ retry reuses it instead of opening a second session for the same incident.
+  const { sessionId } = await handler(alert, (sid) => idem.markSession(alert.dedupKey, sid));
+  await idem.markSession(alert.dedupKey, sessionId); // idempotent backstop if the handler skipped the callback
   return { sessionId, deduped: false };
 }
 
