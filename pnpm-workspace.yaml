@@ -3,5 +3,8 @@ packages:
   - "packages/*"
 
 # Allow esbuild's install script (tsx/vitest depend on its platform binary).
+# msgpackr-extract is BullMQ's OPTIONAL native msgpack accelerator; the pure-JS fallback is
+# fine, so we explicitly decline its build script (silences the ignored-build hard error).
 allowBuilds:
   esbuild: true
+  msgpackr-extract: false

@@ -17,3 +17,6 @@ dist/
 
 # local incident-memory store (kind mode)
 packages/engine/.deadman-memory.json
+
+# coverage output
+coverage/

@@ -18,6 +18,35 @@ import { demoMode } from "./config.js";
 import { recordInvestigation, recordUsage } from "./cost.js";
 
 const MODEL = process.env.DEADMAN_LLM_MODEL ?? "claude-opus-4-8";
+const MAX_RETRIES = Number(process.env.DEADMAN_LLM_RETRIES ?? 3);
+const RETRY_BASE_MS = Number(process.env.DEADMAN_LLM_RETRY_BASE_MS ?? 500);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Overloaded / rate-limited / transient upstream — worth retrying. 4xx client errors are not. */
+function isRetryable(err: unknown): boolean {
+  const status = (err as { status?: number } | undefined)?.status;
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 529;
+}
+
+/**
+ * Bounded exponential-backoff retry around a single Anthropic call. Honours a `retry-after` header
+ * when the API sends one, else backs off 2^n with a little jitter. Re-throws the last error once the
+ * budget is spent, so the caller's fallback still runs — a rate-limit blip never breaks narration.
+ */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetryable(err) || attempt >= MAX_RETRIES) throw err;
+      const hinted = Number((err as { headers?: Record<string, string> } | undefined)?.headers?.["retry-after"]);
+      const backoff = RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * RETRY_BASE_MS);
+      const delay = Number.isFinite(hinted) && hinted > 0 ? hinted * 1000 : backoff;
+      await sleep(delay);
+    }
+  }
+}
 
 const SCHEMA = {
   type: "object",
@@ -49,14 +78,24 @@ export async function narrate(base: InvestigationResult, alert: string, service 
   const c = client();
   if (!c) return base;
   try {
-    const res = await c.messages.create({
+    const res = await withRetry(() =>
+      c.messages.create({
       model: MODEL,
       max_tokens: 1024,
-      system:
-        "You are a senior SRE writing an incident root-cause analysis. Ground every statement " +
-        "strictly in the evidence provided - never invent metrics, causes, or remediations. " +
-        "Return only the structured fields: a one-sentence root_cause, a short markdown report_md, " +
-        "and a one-line summary.",
+      // System prompt as a cache-marked block: the prefix is byte-identical across every
+      // investigation, so once it (plus any future runbook context) crosses the model's minimum
+      // cacheable size, repeat runs read it at ~0.1x input cost. Harmless below that threshold.
+      system: [
+        {
+          type: "text",
+          text:
+            "You are a senior SRE writing an incident root-cause analysis. Ground every statement " +
+            "strictly in the evidence provided - never invent metrics, causes, or remediations. " +
+            "Return only the structured fields: a one-sentence root_cause, a short markdown report_md, " +
+            "and a one-line summary.",
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [
         {
           role: "user",
@@ -68,7 +107,8 @@ export async function narrate(base: InvestigationResult, alert: string, service 
         },
       ],
       output_config: { format: { type: "json_schema", schema: SCHEMA } },
-    });
+      }),
+    );
     if (res.usage) recordUsage(service, res.usage.input_tokens ?? 0, res.usage.output_tokens ?? 0);
     if (res.stop_reason === "refusal") return base;
     const block = res.content.find((b) => b.type === "text");

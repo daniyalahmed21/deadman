@@ -25,6 +25,11 @@ import { policy } from "./classifier.js";
 import { seedDemoIncidents } from "./seed.js";
 import { recent, subscribe } from "./events.js";
 import { injectFailure, runDemo, runBadFixDemo, runInjectionDemo, demoRunning } from "./demo.js";
+import { installAlertIngestion } from "./alerts/webhook.js";
+import { alertsEnabled } from "./alerts/config.js";
+import { attachAuditStore } from "./audit.js";
+import { RedisAuditStore } from "./alerts/persist.js";
+import { renderMetrics } from "./metrics.js";
 import type { Scenario } from "./cluster.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
@@ -177,6 +182,55 @@ app.get("/healthz", (_req, res) =>
 
 app.get("/", (_req, res) => res.type("text").send("deadman MCP - POST /mcp · dashboard at /dashboard"));
 
+// Production alert ingestion (opt-in via DEADMAN_ALERTS): POST /alerts durably queues an inbound
+// monitor alert (BullMQ/Redis) and a worker turns each one into a TrueForge session so the
+// approval gate still governs remediation. No-ops when disabled — the engine stays a pure MCP server.
+const ingestion = installAlertIngestion(app);
+
+// When ingestion (and therefore Redis) is on, make the audit trail durable: replay it on boot and
+// mirror every new record to Redis, so a restart does not lose the record of what the agent did.
+let auditStore: RedisAuditStore | null = null;
+if (ingestion) {
+  auditStore = new RedisAuditStore();
+  await attachAuditStore(auditStore);
+}
+
+const shutdown = async () => {
+  if (ingestion) await ingestion.close().catch(() => {});
+  if (auditStore) await auditStore.close().catch(() => {});
+  process.exit(0);
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+// Prometheus metrics (safety outcomes, incident throughput, queue depth / dead-letter).
+app.get("/metrics", async (_req, res) => {
+  res.type("text/plain; version=0.0.4").send(await renderMetrics(ingestion?.queue ?? null));
+});
+
+// Readiness: dependencies are reachable (the cluster backend, and Redis when ingestion is on).
+// Distinct from /healthz (liveness = the process is up).
+app.get("/readyz", async (_req, res) => {
+  const checks: Record<string, boolean> = { backend: true };
+  if (backend.mode === "kind") {
+    try {
+      checks.backend = backend.nodeCount() > 0;
+    } catch {
+      checks.backend = false;
+    }
+  }
+  if (ingestion) {
+    try {
+      await ingestion.queue.depth();
+      checks.redis = true;
+    } catch {
+      checks.redis = false;
+    }
+  }
+  const ready = Object.values(checks).every(Boolean);
+  res.status(ready ? 200 : 503).json({ ready, checks });
+});
+
 // In demo mode, pre-populate the history/safety/cost views with real scenario runs so the
 // platform is fully rendered the instant it boots (deterministic; sim only).
 if (demoMode()) {
@@ -195,4 +249,7 @@ app.listen(PORT, () => {
   console.log("[deadman]        delete_pvc/scale_to_zero (GATED, destructiveHint)");
   console.log(`[deadman] investigation narration: ${narrationEnabled() ? "LLM (key present)" : "deterministic"}`);
   console.log(`[deadman] backend: ${backend.mode}${demoMode() ? " · DEMO MODE (deterministic, sim, OOM scenario)" : ""} · dashboard: /dashboard · health: /healthz`);
+  console.log(
+    `[deadman] alert ingestion: ${alertsEnabled() ? "ON · POST /alerts (BullMQ/Redis → TrueForge session)" : "off (set DEADMAN_ALERTS=1 + Redis to enable)"}`,
+  );
 });

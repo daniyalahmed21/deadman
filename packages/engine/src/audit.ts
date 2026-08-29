@@ -18,11 +18,31 @@ export interface AuditEntry {
   isError: boolean;
 }
 
+/**
+ * A durable sink for audit entries. The core keeps the trail in memory for fast reads; a store
+ * (the Redis implementation lives in alerts/persist.ts) makes it survive a restart. Dependency
+ * inversion: audit.ts stays storage-agnostic and the impl is injected at boot.
+ */
+export interface AuditStore {
+  load(): Promise<AuditEntry[]>;
+  append(entry: AuditEntry): void;
+}
+
 const entries: AuditEntry[] = [];
+let store: AuditStore | null = null;
+
+/** Replay a durable store's entries into memory (restoring seq), then mirror future records to it. */
+export async function attachAuditStore(s: AuditStore): Promise<void> {
+  const persisted = await s.load();
+  entries.length = 0;
+  entries.push(...persisted);
+  store = s;
+}
 
 export function record(e: Omit<AuditEntry, "seq">): AuditEntry {
   const entry: AuditEntry = { seq: entries.length + 1, ...e };
   entries.push(entry);
+  store?.append(entry); // fire-and-forget durability; never blocks the tool response
   console.error(
     `[audit] #${entry.seq} ${entry.action} ${entry.target} [${entry.tier}] -> ` +
       `${entry.isError ? "REFUSED/ERROR" : "OK"}: ${entry.outcome}`,
@@ -46,4 +66,5 @@ export function all(): AuditEntry[] {
 
 export function reset(): void {
   entries.length = 0;
+  store = null;
 }
