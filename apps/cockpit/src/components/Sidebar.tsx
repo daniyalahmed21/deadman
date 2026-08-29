@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Activity, ShieldCheck, ListTree, Coins, LogOut, Skull, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ export function Sidebar({
   onCloseMobile?: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <>
@@ -142,6 +144,7 @@ export function Sidebar({
         </div>
 
         <button
+          onClick={() => navigate("/")}
           title={collapsed ? "Log out" : undefined}
           className={cn(
             "mt-1 flex items-center rounded-xl text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
