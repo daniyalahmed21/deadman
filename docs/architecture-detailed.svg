@@ -215,7 +215,7 @@
       <text x="1084" y="267" fill="rgba(30,30,30,0.60)" font-size="7" font-family="'Geist Mono',monospace" text-anchor="middle" letter-spacing="0.08em">K8S</text>
       <text x="1142" y="304" fill="#1E1E1E" font-size="12" font-weight="600" font-family="'Geist',sans-serif" text-anchor="middle">Cluster</text>
       <text x="1142" y="322" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">ClusterBackend</text>
-      <text x="1142" y="338" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">kind / in-mem sim</text>
+      <text x="1142" y="338" fill="#6b7280" font-size="8" font-family="'Geist Mono',monospace" text-anchor="middle">kind (real kubectl)</text>
 
       <!-- cockpit -->
       <rect x="1060" y="508" width="164" height="64" rx="6" fill="#F5F5F5"/>

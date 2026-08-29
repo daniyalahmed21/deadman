@@ -1,0 +1,84 @@
+# The whole DEADMAN stack in Docker.
+#
+#   kind get kubeconfig --internal --name deadman > deploy/kube/config   # once (engine -> cluster)
+#   docker compose up -d --build
+#
+# Services:
+#   redis      the durable alert queue (BullMQ)
+#   trueforge  the harness UI + API (:8790)
+#   engine     the DEADMAN MCP engine (:9000), ingestion ON, driving the kind cluster
+#   cockpit    the observability cockpit (:5173)
+#   console    the operator console with the custom approval card (:5174)
+name: deadman
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"] # AOF = durable queue
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  trueforge:
+    image: node:22
+    command: ["npx", "--yes", "@truefoundry/trueforge"]
+    environment:
+      HOST: "0.0.0.0" # bind 0.0.0.0 (default is IPv6 loopback, unreachable from the host)
+      PORT: "8790"
+    ports:
+      - "8790:8790"
+
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["pnpm", "--filter", "deadman-mcp", "start"]
+    environment:
+      PORT: "9000"
+      DEADMAN_ALERTS: "1" # turn on the durable alert queue
+      REDIS_URL: "redis://redis:6379"
+      TRUEFORGE_URL: "http://trueforge:8790"
+      DEADMAN_AGENT: "deadman"
+      KUBECONFIG: "/kube/config"
+      KUBE_CONTEXT: "kind-deadman"
+      KUBE_NAMESPACE: "prod"
+    volumes:
+      - ./deploy/kube/config:/kube/config:ro # internal kubeconfig (server: deadman-control-plane:6443)
+    ports:
+      - "9000:9000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - default # reach redis / trueforge / be reachable by the frontends
+      - kind # reach the kind cluster's API server
+
+  cockpit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["pnpm", "--filter", "@deadman/cockpit", "exec", "vite", "--host", "0.0.0.0"]
+    ports:
+      - "5173:5173"
+
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["pnpm", "--filter", "@deadman/console", "exec", "vite", "--host", "0.0.0.0"]
+    environment:
+      TRUEFORGE_URL: "http://trueforge:8790" # vite proxy target for /api
+    ports:
+      - "5174:5174"
+
+networks:
+  # The kind cluster creates this network; the engine joins it to reach the API server.
+  kind:
+    external: true
+
+volumes:
+  redis-data:

@@ -110,3 +110,43 @@ describe("parseAlert: validation", () => {
     expect(() => IncomingAlertSchema.parse({})).toThrow();
   });
 });
+
+describe("nested vendor payloads (Alertmanager, PagerDuty)", () => {
+  // A real Alertmanager group webhook — no flat text field, everything is nested.
+  const alertmanager = {
+    status: "firing",
+    groupLabels: { alertname: "CheckoutOOM" },
+    commonLabels: { alertname: "CheckoutOOM", severity: "critical", namespace: "prod" },
+    commonAnnotations: { summary: "checkout OOMKilling at 256Mi" },
+    alerts: [{ labels: { alertname: "CheckoutOOM", severity: "critical" }, fingerprint: "am-abc123" }],
+  };
+
+  it("accepts an Alertmanager payload that has no flat text field", () => {
+    expect(() => parseAlert(alertmanager)).not.toThrow();
+  });
+
+  it("pulls text/name/severity from the nested Alertmanager fields", () => {
+    const n = parseAlert(alertmanager);
+    expect(n.text).toBe("checkout OOMKilling at 256Mi");
+    expect(n.alertName).toBe("CheckoutOOM");
+    expect(n.severity).toBe("critical");
+    expect(n.source).toBe("alertmanager");
+  });
+
+  it("uses the nested Alertmanager fingerprint for dedup", () => {
+    expect(parseAlert(alertmanager).dedupKey).toBe("alertmanager-am-abc123");
+  });
+
+  it("accepts a PagerDuty v3 webhook (event.data)", () => {
+    const n = parseAlert({ event: { data: { title: "High error rate", urgency: "high", id: "pd-999" } } });
+    expect(n.text).toBe("High error rate");
+    expect(n.alertName).toBe("High error rate");
+    expect(n.severity).toBe("critical"); // "high" urgency -> critical
+    expect(n.source).toBe("pagerduty");
+    expect(n.dedupKey).toBe("pagerduty-pd-999");
+  });
+
+  it("still rejects a payload with no identifying content anywhere", () => {
+    expect(() => parseAlert({ status: "firing", commonLabels: { severity: "critical" } })).toThrow();
+  });
+});

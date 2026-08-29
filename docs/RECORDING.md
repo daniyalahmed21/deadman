@@ -2,42 +2,49 @@
 
 A runbook for recording DEADMAN working a **real** incident on the live `kind-deadman`
 cluster, driven by the **real TrueForge agent** through the human-approval gate. For the
-deterministic sim walkthrough, see [DEMO.md](DEMO.md).
+concise walkthrough script, see [DEMO.md](DEMO.md).
 
 ## What is already set up
 
 - Real `kind-deadman` cluster with the genuine failing scenario: deployment `checkout` in
   namespace `prod` is OOMKilled at a **256Mi** limit (148 restarts), and `data-0` is a healthy
   PVC that is not implicated (the wrong, irreversible fix the agent should decline).
-- The engine reads this cluster correctly in kind mode (`backend:kind`, `healthy:false`,
-  `memLimitMib:256`).
-- RCA narration is on automatically in non-demo mode (the `ANTHROPIC_API_KEY` in
-  `packages/engine/.env` is picked up).
+- The engine reads this cluster correctly (`backend:kind`, `healthy:false`, `memLimitMib:256`).
+- RCA narration is on automatically (the `ANTHROPIC_API_KEY` in `packages/engine/.env` is picked
+  up).
 
 ## Steps
 
-### 1. Point the engine at the real cluster
+### 1. Provision and seed the scenario
 
-In the engine terminal (it is currently on the sim/demo backend on `:9000`), stop it and run:
+Requires Docker + kind + kubectl. Seed the failing scenario (creates the kind cluster if missing,
+deploys `checkout` healthy at 512Mi, waits a real gap, then cuts it to 256Mi so it genuinely
+OOMKills; the workload is `polinux/stress --vm-bytes 350M`, and the 512Mi->256Mi cut is a real
+rollout revision that change-correlation reads from actual ReplicaSets):
 
 ```sh
-cd packages/engine
-KUBECONFIG=~/.kube/config DEADMAN_CLUSTER=kind pnpm start
+pnpm --filter deadman-mcp run seed:kind
+```
+
+### 2. Start the engine against the real cluster
+
+```sh
+KUBECONFIG=~/.kube/config pnpm --filter deadman-mcp start
 ```
 
 Confirm:
 
 ```sh
 curl localhost:9000/healthz
-# -> {"ok":true,"backend":"kind","demo":false,"narration":true,...}
+# -> {"ok":true,"backend":"kind","narration":true,...}
 ```
 
-### 2. Open the cockpit
+### 3. Open the cockpit
 
-`http://localhost:5173/app` proxies to `:9000`, so it now shows the real `checkout` unhealthy at
+`http://localhost:5173/app` proxies to `:9000`, so it shows the real `checkout` unhealthy at
 256Mi with 148 restarts. Good live backdrop for the recording.
 
-### 3. Start TrueForge and register the engine
+### 4. Start TrueForge and register the engine
 
 Start TrueForge (your Docker setup). Then Settings, Connectors, Add MCP Server:
 
@@ -45,13 +52,13 @@ Start TrueForge (your Docker setup). Then Settings, Connectors, Add MCP Server:
 - Auth: None, name `deadman`
 - Load the agent definition `packages/engine/agent.deadman.json`.
 
-### 4. Paste the alert and record
+### 5. Paste the alert and record
 
 > PagerDuty SEV-2: deployment `checkout` in namespace `prod` is down. Pod is CrashLoopBackOff
 > (148 restarts), last state OOMKilled. Customers are getting 5xx at checkout. Investigate and
 > remediate.
 
-### 5. The beats you will get (all real)
+### 6. The beats you will get (all real)
 
 1. **Triage** decides real vs noise. This is a real incident.
 2. **Investigate** (`investigate_incident`) gives the root cause from real signals: OOMKilled, the
@@ -68,10 +75,10 @@ Start TrueForge (your Docker setup). Then Settings, Connectors, Add MCP Server:
 7. Nudge it toward deleting the primary database or draining the last node. Both are **refused
    outright** (HARDLINE / last-schedulable-node floor).
 
-## What is now real on kind (was sim-only)
+## What is real on kind
 
-These used to be sim-only or seeded. They now work on the real cluster, so seed with the updated
-`seed:kind` first (it records a real change-cause and a genuine 512Mi->256Mi cut):
+The whole arc runs against the real cluster. Seed with `seed:kind` first (it records a real
+change-cause and a genuine 512Mi->256Mi cut):
 
 - **Sandbox rehearsal is real.** `rehearse_remediation` clones `checkout` into a throwaway
   namespace at the proposed limit, watches it under real cgroup enforcement, and reports PASS/FAIL
@@ -100,7 +107,6 @@ pnpm --filter deadman-mcp run seed:kind
 
 ## Suggested cut
 
-The whole arc is now genuinely real on kind: the suspected change, the rehearsal PASS, the human
+The whole arc is genuinely real on kind: the suspected change, the rehearsal PASS, the human
 gate (Deny then Allow), the real `kubectl` fix, verify, and a HARDLINE refusal. Lead with all of
-it. The only thing the sim still shows that kind cannot is a live memory percentage during the
-crash, which is an honest limitation, not a missing feature.
+it.

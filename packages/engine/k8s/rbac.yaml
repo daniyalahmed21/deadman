@@ -3,14 +3,20 @@
 # DEADMAN drives the cluster only through the verbs its tools actually use — read telemetry, and
 # the specific remediations behind the approval gate. Give it exactly this, no cluster-admin.
 #
-#   kubectl apply -f rbac.yaml
+# ⚠️ NAMESPACE: this manifest is pinned to `prod`. It MUST match your `KUBE_NAMESPACE`. If yours
+# differs, rewrite every `namespace: prod` (ServiceAccount, Role, RoleBinding, ClusterRoleBinding
+# subject) — the one-liner does it:
+#
+#   NS=your-namespace
+#   sed "s/namespace: prod/namespace: $NS/g" k8s/rbac.yaml | kubectl apply -f -
 #   # then point a kubeconfig at this ServiceAccount and run:
-#   DEADMAN_CLUSTER=kind KUBE_CONTEXT=<your-context> KUBE_NAMESPACE=prod pnpm start
+#   DEADMAN_CLUSTER=kind KUBE_CONTEXT=<your-context> KUBE_NAMESPACE=$NS pnpm start
 #
 # The namespaced Role below is enough for investigate + the in-namespace remediations
 # (restart / bump_memory / rollback / scale / delete_pvc). The ClusterRole at the bottom is
 # OPTIONAL and elevated — apply it only if you want node operations (cordon/drain) and the
-# rehearsal sandbox (which creates an ephemeral namespace). Omit it to keep DEADMAN namespace-bound.
+# rehearsal sandbox (which forks the workload into an ephemeral namespace). Omit it to keep
+# DEADMAN namespace-bound (rehearsal + node ops are then unavailable, everything else still works).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -73,10 +79,17 @@ rules:
   - apiGroups: [""]
     resources: [pods/eviction]
     verbs: [create] # drain evicts
-  # rehearse_remediation forks the workload into a throwaway namespace, then deletes it
+  # rehearse_remediation forks the workload into a throwaway namespace, then deletes it. The
+  # namespace name is generated at runtime, so these must be cluster-wide (not namespaced).
   - apiGroups: [""]
     resources: [namespaces]
     verbs: [create, delete, get]
+  - apiGroups: ["apps"]
+    resources: [deployments, replicasets]
+    verbs: [create, get, list, watch, patch, delete] # apply the fork + watch its rollout
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list, watch] # read the forked pods' state during the rehearsal
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

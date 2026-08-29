@@ -1,21 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { previewRemediation } from "../src/preview.js";
-import { resetCluster, setScenario } from "../src/cluster.js";
 
+/**
+ * The state-independent shape of the approval-gate preview: tier, blast shape, rollback, and
+ * warnings. The live before/after values and pod counts come from the real cluster and are
+ * covered by the e2e/integration run, not here.
+ */
 describe("remediation preview (approval-gate diff)", () => {
-  beforeEach(() => {
-    setScenario("oom");
-    resetCluster();
-    setScenario("oom");
-  });
-
-  it("bump_memory: shows the field diff, low severity, and a reversible rollback", () => {
+  it("bump_memory: GATED, reversible, and targets the new limit", () => {
     const p = previewRemediation("bump_memory", "checkout", { mib: 512 });
     expect(p.tier).toBe("GATED");
-    expect(p.changes[0]).toMatchObject({ before: "256Mi", after: "512Mi" });
+    expect(p.destructive).toBe(true);
     expect(p.blastRadius.reversible).toBe(true);
-    expect(p.blastRadius.severity).toBe("medium"); // rolling restart of pods
-    expect(p.rollback?.inverse).toContain("256");
+    expect(p.changes[0]).toMatchObject({ after: "512Mi" });
     expect(p.rawDiff).toContain("512Mi");
   });
 

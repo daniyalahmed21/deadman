@@ -8,7 +8,6 @@ import { StatBlock, StatBlockSkeleton } from "@/components/ui/statblock";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Gauge } from "@/components/ui/gauge";
 import { LiveFeed } from "@/components/LiveFeed";
-import { DemoControls } from "@/components/DemoControls";
 import { RemediationPlan } from "@/components/RemediationPlan";
 import type { DashboardFeed } from "@/lib/useDashboard";
 import { useEventStream } from "@/lib/useEventStream";
@@ -72,7 +71,6 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
         actions={
           <div className="flex items-center gap-3">
             <StatusPill ok={resolved} okLabel="Resolved" badLabel={online ? "Firing" : "Offline"} />
-            <DemoControls />
           </div>
         }
       />

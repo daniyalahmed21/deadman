@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Skull, Star, ShieldCheck, RotateCcw, Ban, GitCommitVertical, FlaskConical } from "lucide-react";
+import { Skull, Star, ShieldCheck, RotateCcw, Ban, GitCommitVertical, FlaskConical, Siren } from "lucide-react";
 import "./landing.css";
 
 const GITHUB = "https://github.com/daniyalahmed21/deadman";
@@ -79,7 +79,7 @@ export function Landing() {
       <div className="trust wrap">
         <span className="eyebrow">Built on</span>
         <div className="row">
-          <span>TrueForge</span><span>MCP</span><span>Kubernetes</span><span>Claude</span><span>kind / sim</span>
+          <span>TrueForge</span><span>MCP</span><span>Kubernetes</span><span>Redis</span><span>Claude</span>
         </div>
       </div>
 
@@ -132,6 +132,11 @@ export function Landing() {
             <div className="ico"><FlaskConical size={19} strokeWidth={2} /></div>
             <h3>Sandbox rehearsal</h3>
             <p>Forks the cluster state. Proves the fix resolves it. Then applies to prod. Rehearse before you touch prod.</p>
+          </div>
+          <div className="b">
+            <div className="ico"><Siren size={19} strokeWidth={2} /></div>
+            <h3>Production alert ingestion</h3>
+            <p>Monitors POST to a durable queue. Deduped, retried, dead-lettered. An alert storm never drops an incident.</p>
           </div>
         </div>
       </section>

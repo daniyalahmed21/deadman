@@ -1,20 +1,15 @@
 /**
- * Cluster backend selection.
+ * Cluster backend.
  *
- * The remediation tools talk to a `ClusterBackend`, never to kubectl or the sim directly.
- * Two implementations:
- *   - sim  (default): deterministic in-memory cluster - bulletproof for recording.
- *   - kind (DEADMAN_CLUSTER=kind): real kubectl against a local kind cluster - real work.
- *
- * Same interface both ways, so the tool signatures never change.
+ * The remediation tools talk to a `ClusterBackend`, never to kubectl directly. There is one
+ * implementation: `kind`, which shells out to `kubectl` against a real cluster (a local kind
+ * cluster in dev, any EKS/GKE/AKS context in production - see backends/kind.ts). DEADMAN only
+ * ever acts on real infrastructure; the interface is the seam that keeps the tools kubectl-free.
  */
 
-import * as sim from "./cluster.js";
 import { kindBackend } from "./backends/kind.js";
-import { buildInvestigation } from "./investigate.js";
 import type { InvestigationResult } from "./fixtures.js";
 import type { ChangeEvent, RehearsalResult } from "@deadman/shared";
-import { demoMode } from "./config.js";
 
 export interface HealthSnapshot {
   deployment: string;
@@ -50,7 +45,7 @@ export interface PreviewProbe {
 }
 
 export interface ClusterBackend {
-  readonly mode: "sim" | "kind";
+  readonly mode: "kind";
   reset(): void;
   investigate(deployment: string): InvestigationResult;
   serviceHealth(deployment: string): HealthSnapshot;
@@ -79,54 +74,17 @@ export interface ClusterBackend {
   nodeCount(): number;
   /**
    * Real change preview for `patch`: a real `kubectl diff`, real admission warnings from a
-   * server dry-run, and a live ResourceQuota headroom check. Optional: only the kind backend has
-   * a cluster to dry-run against; the sim returns its templated preview unchanged.
+   * server dry-run, and a live ResourceQuota headroom check against the cluster.
    */
   previewChange?(deployment: string, patch: RemediationPatch): PreviewProbe;
   /**
-   * Rehearse `action` before it touches prod, and report whether it resolves the incident. The
-   * sim forks its in-memory state; kind clones the deployment into a throwaway namespace and
-   * watches it under real cgroup enforcement (memory case, idle load only).
+   * Rehearse `action` before it touches prod, and report whether it resolves the incident. Clones
+   * the deployment into a throwaway namespace and watches it under real cgroup enforcement
+   * (memory case, idle load only), then tears the namespace down.
    */
   rehearse(action: string, target: string, args: RemediationPatch): RehearsalResult;
 }
 
-const simBackend: ClusterBackend = {
-  mode: "sim",
-  reset: () => sim.resetCluster(),
-  investigate: (d) => {
-    const h = sim.snapshotHealth(d);
-    const pods = h.pods.map((p) => ({
-      name: p.name,
-      restarts: p.restarts,
-      oomKilled: /OOMKilled/i.test(p.phase),
-      reason: p.reason,
-    }));
-    return buildInvestigation(d, h.memLimitMib, pods, sim.podMetricsSim(d).workingSetMib);
-  },
-  serviceHealth: (d) => sim.snapshotHealth(d),
-  metrics: (d) => sim.podMetricsSim(d),
-  logs: (d, n) => sim.podLogsSim(d, n),
-  previousLogs: (d, n) => sim.podPreviousLogsSim(d, n),
-  describePod: (d) => sim.describePodSim(d),
-  events: (d) => sim.clusterEventsSim(d),
-  deployHistory: (d) => sim.deployHistorySim(d),
-  changeHistory: (d) => sim.changeHistorySim(d),
-  deploymentMem: (d) => sim.getDeployment(d)?.memLimitMib,
-  deploymentReplicas: (d) => sim.getDeployment(d)?.replicas,
-  pvcExists: (n) => sim.pvcExists(n),
-  restartPods: (d) => sim.restartPods(d),
-  bumpMemory: (d, m) => sim.bumpMemory(d, m),
-  rollbackDeploy: (d) => sim.rollbackDeploy(d),
-  deletePvc: (n) => sim.deletePvc(n),
-  scaleToZero: (d) => sim.scaleToZero(d),
-  scaleDeployment: (d, r) => sim.scaleDeploymentSim(d, r),
-  cordonNode: (n) => sim.cordonNodeSim(n),
-  drainNode: (n) => sim.drainNodeSim(n),
-  nodeCount: () => 1, // kind is single-node; the sim models the same so drain-last-node is refused
-  rehearse: (action, target, args) => sim.rehearseSim(action, target, args),
-};
-
-// Demo mode forces the deterministic sim backend regardless of DEADMAN_CLUSTER.
-export const backend: ClusterBackend =
-  !demoMode() && process.env.DEADMAN_CLUSTER === "kind" ? kindBackend : simBackend;
+// The engine drives a real cluster only. `kind` locally, any EKS/GKE/AKS context in production
+// (see backends/kind.ts). There is no in-memory backend; DEADMAN acts on real infrastructure.
+export const backend: ClusterBackend = kindBackend;

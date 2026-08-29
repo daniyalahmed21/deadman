@@ -20,3 +20,9 @@ packages/engine/.deadman-memory.json
 
 # coverage output
 coverage/
+
+# Local internal kubeconfig for the dockerized engine (contains cluster certs)
+deploy/kube/
+
+# TypeScript incremental build cache (artifact, never commit)
+*.tsbuildinfo

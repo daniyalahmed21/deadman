@@ -12,6 +12,9 @@ import type { AuditStore, AuditEntry } from "../audit.js";
 const KEY = process.env.DEADMAN_AUDIT_KEY ?? "deadman:audit";
 
 export class RedisAuditStore implements AuditStore {
+  /** In-flight writes, so a graceful shutdown can drain them before the connection closes. */
+  private readonly pending = new Set<Promise<unknown>>();
+
   constructor(private readonly redis: Redis = createRedisConnection()) {}
 
   async load(): Promise<AuditEntry[]> {
@@ -20,11 +23,26 @@ export class RedisAuditStore implements AuditStore {
   }
 
   append(entry: AuditEntry): void {
-    // Fire-and-forget: durability is best-effort and must never block or fail a tool response.
-    void this.redis.rpush(KEY, JSON.stringify(entry)).catch(() => {});
+    // Fire-and-forget so a tool response is never blocked or failed by Redis — but TRACK the write
+    // (so close() can drain it on shutdown) and LOG failures rather than silently dropping an audit
+    // record. The audit trail is the record of what the agent did to production; a lost write must
+    // at least be visible, not disappear.
+    const write = this.redis.rpush(KEY, JSON.stringify(entry)).then(
+      () => undefined,
+      (err: unknown) =>
+        console.error(
+          `[deadman] audit persist FAILED for #${entry.seq} ${entry.action} ${entry.target}:`,
+          err instanceof Error ? err.message : err,
+        ),
+    );
+    this.pending.add(write);
+    void write.finally(() => this.pending.delete(write));
   }
 
   async close(): Promise<void> {
-    this.redis.disconnect();
+    // Drain outstanding writes so a graceful shutdown never loses a just-recorded action, then
+    // close cleanly (quit waits for the pending reply; hard-disconnect only if that errors).
+    await Promise.allSettled([...this.pending]);
+    await this.redis.quit().catch(() => this.redis.disconnect());
   }
 }

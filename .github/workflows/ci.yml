@@ -6,6 +6,8 @@ on:
   pull_request:
 
 jobs:
+  # Fast gate: lint, typecheck, and unit tests. Runs with no cluster — the backend degrades
+  # gracefully when kubectl/a cluster is absent, so these are deterministic and quick.
   engine:
     runs-on: ubuntu-latest
     steps:
@@ -19,10 +21,36 @@ jobs:
       - run: pnpm lint
       - run: pnpm --filter deadman-mcp typecheck
       - run: pnpm --filter deadman-mcp test
-      - name: integration (e2e + adversarial, sim backend)
+
+  # Real integration: DEADMAN only acts on real infrastructure, so the e2e and adversarial
+  # suites run against an actual kind cluster seeded with the OOM scenario (polinux/stress at
+  # 350M under a 256Mi limit → a genuine OOMKill) plus a real 512Mi→256Mi change history.
+  integration:
+    runs-on: ubuntu-latest
+    needs: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: deadman
+      - name: seed the failing scenario (real change history)
+        working-directory: packages/engine
+        # A short gap keeps the culprit revision's timestamp genuinely distinct from the healthy
+        # one without waiting the local default (240s).
+        run: DEADMAN_CHANGE_GAP_SECONDS=15 bash scripts/seed-kind.sh
+      - name: integration (e2e + adversarial, real kind backend)
         working-directory: packages/engine
         run: |
           DEADMAN_LLM_NARRATION=off PORT=9000 pnpm start &
           for i in $(seq 1 30); do curl -sf http://localhost:9000/ >/dev/null && break; sleep 1; done
+          # Let the 256Mi pod OOMKill and restart at least once so investigation has live evidence.
+          sleep 20
           node scripts/e2e.mjs
           node scripts/adversarial.mjs
