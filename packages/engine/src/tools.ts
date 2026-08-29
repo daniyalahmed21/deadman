@@ -28,6 +28,7 @@ import { emit } from "./events.js";
 import { armWatchdog } from "./watchdog.js";
 import { correlateChange, symptomOf } from "./correlate.js";
 import { rehearse } from "./rehearse.js";
+import { previewRemediation } from "./preview.js";
 
 const WATCHDOG_WINDOW_MS = Number(process.env.DEADMAN_WATCHDOG_WINDOW_MS ?? 4000);
 const WATCHDOG_INTERVAL_MS = Number(process.env.DEADMAN_WATCHDOG_INTERVAL_MS ?? 1000);
@@ -276,6 +277,25 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ tool, target }) =>
       text(`[dry-run] ${tool} on ${target} → would apply; no changes made (server-side validation OK)`),
+  );
+
+  server.registerTool(
+    "preview_remediation",
+    {
+      title: "Preview remediation (approval diff)",
+      description:
+        "Compute what a remediation would change: a field-level diff, blast radius (pods, " +
+        "disruption, reversibility, severity), and the rollback plan - the full context to " +
+        "show a human at the approval gate before a destructive action runs. Read-only.",
+      inputSchema: {
+        action: z.string().describe("Remediation tool, e.g. bump_memory / delete_pvc"),
+        target: z.string().describe("Deployment / resource"),
+        mib: z.number().int().positive().optional().describe("New memory limit (for bump_memory)"),
+        replicas: z.number().int().min(0).optional().describe("Target replicas (for scale_deployment)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ action, target, mib, replicas }) => json(previewRemediation(action, target, { mib, replicas })),
   );
 
   server.registerTool(

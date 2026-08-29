@@ -85,6 +85,44 @@ export interface PodMetric {
   cpuMillis: number;
 }
 
+/** A structured field-level change, for the approval-gate diff. */
+export interface FieldChange {
+  path: string;
+  before: unknown;
+  after: unknown;
+}
+
+/** How far a remediation reaches - the concise blast-radius the human weighs at the gate. */
+export interface BlastRadius {
+  podsAffected: number;
+  disruption: "none" | "rolling" | "restart" | "downtime";
+  stateful: boolean;
+  reversible: boolean;
+  severity: "low" | "medium" | "high";
+}
+
+/** How to undo a remediation (null = irreversible). */
+export interface RollbackPlan {
+  method: string;
+  inverse: string;
+  beforeState: Record<string, unknown>;
+  note?: string;
+}
+
+/** The full context shown at the human-approval gate before a destructive action runs. */
+export interface RemediationPreview {
+  action: string;
+  target: string;
+  tier: Tier;
+  summary: string;
+  changes: FieldChange[];
+  rawDiff: string;
+  blastRadius: BlastRadius;
+  rollback: RollbackPlan | null;
+  warnings: string[];
+  destructive: boolean;
+}
+
 /** Result of rehearsing a remediation in an isolated fork of the cluster before touching prod. */
 export interface RehearsalResult {
   action: string;
