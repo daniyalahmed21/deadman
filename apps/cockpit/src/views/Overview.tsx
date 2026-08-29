@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, Check, Cpu, Gauge as GaugeIcon, ShieldX } from "lucide-react";
+import { Activity, Check, Cpu, Gauge as GaugeIcon, GitCommitVertical, ShieldX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill, StatusPill } from "@/components/ui/badge";
 import { EvidenceList } from "@/components/ui/evidence";
@@ -107,8 +107,28 @@ export function Overview({ feed }: { feed: DashboardFeed }) {
                     )}
                     <span className="tabular-nums">validity {num(inv.validity_score)}</span>
                   </div>
+
+                  {inv.change?.suspected && (
+                    <div className="flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2.5">
+                      <GitCommitVertical className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                      <div className="min-w-0 text-[13px] leading-snug">
+                        <span className="font-medium text-warning">Suspected change</span>{" "}
+                        <span className="text-muted-foreground">
+                          rev {num(inv.change.suspected.revision)} · {inv.change.suspected.summary} ·{" "}
+                          {num(inv.change.minutesBefore ?? 0)}m before onset · {num(Math.round(inv.change.confidence * 100))}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="border-t pt-4">
-                    <EvidenceList items={inv.evidence} />
+                    <EvidenceList
+                      items={inv.evidence.filter(
+                        (e) =>
+                          !e.startsWith("suspected change") &&
+                          !(inv.change?.suspected && /no correlated deploy|no correlated/i.test(e)),
+                      )}
+                    />
                   </div>
                 </>
               ) : (
