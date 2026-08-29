@@ -35,7 +35,15 @@ export interface Metrics {
   pods: PodMetric[];
 }
 
-/** A real change preview: the field diff and any admission warnings from a server dry-run. */
+/** The field(s) a preview/rehearsal would change, expressed as intent (not a kubectl object). */
+export interface RemediationPatch {
+  /** new memory limit in MiB (bump_memory) */
+  mib?: number;
+  /** target replica count (scale_deployment) */
+  replicas?: number;
+}
+
+/** A real change preview: the field diff and any admission/quota warnings. */
 export interface PreviewProbe {
   rawDiff: string;
   warnings: string[];
@@ -70,23 +78,17 @@ export interface ClusterBackend {
   /** Number of schedulable (Ready) nodes - used to refuse draining the last one. */
   nodeCount(): number;
   /**
-   * Real change preview: apply `mutate` to a copy of the live object, then run `kubectl diff`
-   * and `kubectl apply --dry-run=server` to get a real diff and real admission warnings. Optional:
-   * only the kind backend implements it; the sim has no cluster to dry-run against.
+   * Real change preview for `patch`: a real `kubectl diff`, real admission warnings from a
+   * server dry-run, and a live ResourceQuota headroom check. Optional: only the kind backend has
+   * a cluster to dry-run against; the sim returns its templated preview unchanged.
    */
-  previewChange?(deployment: string, mutate: (obj: any) => void): PreviewProbe;
+  previewChange?(deployment: string, patch: RemediationPatch): PreviewProbe;
   /**
-   * The namespace's `limits.memory` ResourceQuota (hard cap and current use, in MiB), or null if
-   * none. Pod-level quota is not caught by a Deployment dry-run, so a memory bump checks headroom
-   * against this directly. Optional: kind only.
+   * Rehearse `action` before it touches prod, and report whether it resolves the incident. The
+   * sim forks its in-memory state; kind clones the deployment into a throwaway namespace and
+   * watches it under real cgroup enforcement (memory case, idle load only).
    */
-  namespaceMemoryQuota?(): { hardMib: number; usedMib: number } | null;
-  /**
-   * Real sandbox rehearsal: clone the deployment into a throwaway namespace at `memMib`, watch
-   * whether the clone stays healthy (no OOM), then delete the namespace. Faithful for the memory
-   * case, but idle-load only. Optional: kind only; the sim uses an in-process state fork instead.
-   */
-  rehearseInNamespace?(deployment: string, memMib: number): RehearsalResult;
+  rehearse(action: string, target: string, args: RemediationPatch): RehearsalResult;
 }
 
 const simBackend: ClusterBackend = {
@@ -122,6 +124,7 @@ const simBackend: ClusterBackend = {
   cordonNode: (n) => sim.cordonNodeSim(n),
   drainNode: (n) => sim.drainNodeSim(n),
   nodeCount: () => 1, // kind is single-node; the sim models the same so drain-last-node is refused
+  rehearse: (action, target, args) => sim.rehearseSim(action, target, args),
 };
 
 // Demo mode forces the deterministic sim backend regardless of DEADMAN_CLUSTER.
