@@ -25,6 +25,10 @@ import * as incident from "./incident.js";
 import * as incidents from "./incidents.js";
 import { buildPostmortem } from "./postmortem.js";
 import { emit } from "./events.js";
+import { armWatchdog } from "./watchdog.js";
+
+const WATCHDOG_WINDOW_MS = Number(process.env.DEADMAN_WATCHDOG_WINDOW_MS ?? 4000);
+const WATCHDOG_INTERVAL_MS = Number(process.env.DEADMAN_WATCHDOG_INTERVAL_MS ?? 1000);
 
 /** Wrap any JSON-serialisable value as an MCP text result. */
 function json(value: unknown) {
@@ -44,6 +48,10 @@ function err(s: string) {
 /**
  * Run a destructive mutation through the sensitive-target floor, then audit it.
  * A refused call never mutates; both outcomes are recorded.
+ *
+ * A "fix" mutation (one meant to restore health) may pass a `revert` thunk built from the
+ * captured before-state. On success the engine arms the auto-rollback watchdog: it watches the
+ * target and, if the fix does not hold within the window, runs `revert` and re-verifies.
  */
 function guardedMutation(
   tool: string,
@@ -51,6 +59,7 @@ function guardedMutation(
   before: unknown,
   mutate: () => string,
   after: () => unknown,
+  revert?: () => string,
 ) {
   const tier = classifyTool(tool);
   const verdict = guardDestructive(tool, target);
@@ -60,6 +69,11 @@ function guardedMutation(
   }
   const outcome = mutate();
   audit.record({ action: tool, target, tier, before, after: after(), outcome, isError: false });
+  if (revert) {
+    // Fire-and-forget: don't block the tool response on the watch window. The watchdog emits
+    // its own events and audits any auto-rollback.
+    void armWatchdog({ target, undo: revert, windowMs: WATCHDOG_WINDOW_MS, intervalMs: WATCHDOG_INTERVAL_MS });
+  }
   return text(`[${tier}] ${outcome}`);
 }
 
@@ -347,14 +361,18 @@ export function registerDeadmanTools(server: McpServer): void {
       },
       annotations: { destructiveHint: true },
     },
-    async ({ target, mib }) =>
-      guardedMutation(
+    async ({ target, mib }) => {
+      const before = backend.deploymentMem(target);
+      return guardedMutation(
         "bump_memory",
         target,
-        backend.deploymentMem(target),
+        before,
         () => backend.bumpMemory(target, mib),
         () => backend.deploymentMem(target),
-      ),
+        // Watch the fix; if the new limit doesn't clear the OOM, revert to the prior limit.
+        before !== undefined ? () => backend.bumpMemory(target, before) : undefined,
+      );
+    },
   );
 
   server.registerTool(
@@ -417,14 +435,17 @@ export function registerDeadmanTools(server: McpServer): void {
       },
       annotations: { destructiveHint: true },
     },
-    async ({ target, replicas }) =>
-      guardedMutation(
+    async ({ target, replicas }) => {
+      const before = backend.deploymentReplicas(target);
+      return guardedMutation(
         "scale_deployment",
         target,
-        backend.deploymentReplicas(target),
+        before,
         () => backend.scaleDeployment(target, replicas),
         () => backend.deploymentReplicas(target),
-      ),
+        before !== undefined ? () => backend.scaleDeployment(target, before) : undefined,
+      );
+    },
   );
 
   server.registerTool(

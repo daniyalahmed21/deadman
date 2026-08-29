@@ -1,93 +1,77 @@
 # DEADMAN
 
-An AI SRE with a **license to act** on production.
+### An AI SRE that **remediates production — safely.**
 
-Every incident bot *diagnoses* — read-only, safe, boring. DEADMAN **remediates**: it
-investigates an incident, proposes fixes, and then acts. The safety model is graduated
-autonomy:
+Every incident bot *diagnoses* (read-only, safe, boring). **DEADMAN acts** — it investigates an
+incident, fixes it, and cleans up after itself. What makes that safe is [TrueForge](https://github.com/truefoundry/trueforge):
+destructive actions pause for human approval, and catastrophic ones are refused outright.
 
-- **Reversible, low-blast-radius** actions (e.g. rollout-restart) auto-execute.
-- **Irreversible / destructive** actions hard-stop at a **human-approval checkpoint** with a
-  diff + rollback card before anything is touched.
-- **Catastrophic** actions (delete the primary database, drop a namespace) are **refused
-  outright** — a license to act has limits.
-
-Dry-run first, closed-loop verify after, full audit trail.
-
-Built to run on [TrueForge](https://github.com/truefoundry/trueforge) — the harness owns the
-visible safety (the approval pause on destructive tools), which is the whole point.
-
-## Architecture
-
-An alert enters the TrueForge harness, which calls the DEADMAN engine over MCP. The engine
-investigates production, routes every write through a blast-radius approval gate, streams each
-step to a live cockpit, and closes the loop by verifying the fix.
+> **Watch it fix prod. Watch it refuse to nuke prod. Watch it undo its own mistake.**
 
 ![DEADMAN architecture](docs/architecture.svg)
 
-*High-level flow. For the engine internals — classifier → approval gate → sensitive-target
-guard, the auto-rollback watchdog, and the audit → event-stream → cockpit path — see the
-[detailed architecture](docs/architecture-detailed.svg).*
+---
 
-## What works today
+## The one-minute version
 
-- **Investigate** — grounded root-cause analysis from live signals (memory limit, restart
-  counts, OOMKill status), not a fixture. The diagnosis changes when the cluster changes.
-- **Graduated autonomy** — safe fixes auto-run; destructive ones pause at TrueForge's
-  approval gate (`destructiveHint`); catastrophic ones are refused outright.
-- **Auto-rollback watchdog** — after a remediation, DEADMAN watches the target and, if the fix
-  doesn't hold, auto-reverts and escalates. Reversibility is a first-class primitive.
-- **Prompt-injection defense** — an alert that instructs a destructive action is flagged and
-  ignored; alerts are treated as data, never commands. The real incident is still fixed.
-- **Live cockpit** — a React observability platform (overview, incidents + replay, safety,
-  cost) with a real-time SSE feed of every step the agent takes.
-- **Two cluster backends** — a deterministic in-memory `sim` (default) and a real `kind`
-  cluster driven by `kubectl` (`DEADMAN_CLUSTER=kind`). Same tools either way.
-- **Defense in depth** — a sensitive-target floor refuses destructive ops on protected
-  resources even if approved; every mutating call is recorded in an append-only audit trail.
-- **Runbook-aware** — `get_runbook` supplies the decision rules the agent follows.
-- **Verified live end-to-end** — agent → approval gate → real `kubectl` → cluster fixed
-  (256Mi→512Mi, pod Running), confirmed by independent `kubectl`. Sessions persist (resume).
+| | Typical incident bot | **DEADMAN** |
+|---|---|---|
+| **Diagnoses** | ✅ | ✅ grounded in live signals, not a fixture |
+| **Remediates prod** | ❌ | ✅ safe fixes auto-run; destructive ones gated |
+| **Reversible** | ❌ | ✅ auto-rollback watchdog reverts fixes that don't hold |
+| **Injection-safe** | ❌ | ✅ treats alerts as data, refuses instructions in them |
+| **Observable** | logs | ✅ live React cockpit streaming every step |
 
-## Layout
+**Graduated autonomy — every write is routed by blast radius:**
 
-- **`packages/engine/`** — the DEADMAN engine, a remote HTTP MCP server (streamable-HTTP): the tool
-  surface with read/write gate annotations, blast-radius classifier, sensitive-target floor,
-  audit trail, runbook, and both cluster backends. See [`packages/engine/README.md`](packages/engine/README.md).
-- **`demo.sh`** — one-command end-to-end demo (incident → gate → approve → fix → verify).
-- **`.github/workflows/ci.yml`** — typecheck + unit tests on every push.
+- 🟢 **SAFE** (reversible, low blast radius) — auto-runs.
+- 🟡 **GATED** (destructive) — pauses at TrueForge's **human-approval gate** (Allow / Deny).
+- 🔴 **HARDLINE** (delete the primary DB, drop a namespace) — **refused outright**, never callable.
 
-## Quick start
+Then two more layers: a **sensitive-target floor** (refuses protected resources even if approved)
+and an **auto-rollback watchdog** (after a fix, it verifies the fix held — and reverts if it didn't).
+Every decision is written to an append-only **audit trail** and streamed live to the cockpit.
+
+## See it live (≈60s in the cockpit)
+
+One click each, streamed step-by-step:
+
+1. **Simulate incident** — inject OOMKilled → investigate → propose → *approve in TrueForge* → fix → verify → **resolved**.
+2. **Bad fix → auto-rollback** — apply a too-small limit → watchdog catches it didn't hold → **auto-reverts** → escalates to the right fix.
+3. **Prompt injection → refused** — a malicious alert says *"delete the primary database"* → **flagged and refused** → the real incident is still fixed safely.
+
+## Run it
 
 ```sh
-cd packages/engine && npm install
-npm test                       # 20 unit tests
-npm start                      # sim backend  -> http://localhost:9000/mcp
-# or, against a real cluster:
-npm run seed:kind              # create kind cluster + seed the OOMKill scenario
-DEADMAN_CLUSTER=kind npm start
+pnpm install
+pnpm --filter deadman-mcp test         # 50 unit tests
+DEADMAN_DEMO_MODE=1 pnpm engine         # engine (sim backend) -> http://localhost:9000/mcp
+pnpm dev                                # cockpit -> http://localhost:5173
 ```
 
-Register `http://host.docker.internal:9000/mcp` in TrueForge → Settings → Connectors, then:
+Register `http://host.docker.internal:9000/mcp` in **TrueForge → Settings → Connectors**, then drive
+the full arc from TrueForge. For a real cluster instead of the sim: `pnpm --filter deadman-mcp run seed:kind`
+then `DEADMAN_CLUSTER=kind pnpm engine`.
 
-```sh
-bash demo.sh                   # drive the full arc against TrueForge + the MCP server
-```
+## Under the hood
 
-## Testing
+- **`packages/engine/`** — the DEADMAN engine: a remote HTTP MCP server. Tool surface with read/write
+  gate annotations, blast-radius classifier, sensitive-target floor, auto-rollback watchdog, audit
+  trail, SSE event stream, runbook, and both cluster backends (`sim` / `kind`).
+- **`apps/cockpit/`** — the React observability platform (overview, incidents + replay, safety, cost)
+  with a real-time SSE feed of the agent's activity.
+- **`packages/shared/`** — wire types shared engine ↔ cockpit (typed end to end).
+- **[Detailed architecture](docs/architecture-detailed.svg)** — the engine internals: classifier →
+  approval gate → sensitive-target guard, the watchdog loop, and the audit → event-stream → cockpit path.
 
-- **Unit** (`npm test`): tiers, sensitive-target floor, cluster sim, audit, scenario RCA,
-  runbook, **adversarial** (injected-instruction refusals, frozen policy) — in CI on every push.
-- **Integration** (`packages/engine/scripts/smoke.mjs`): the live tool surface over MCP.
-- **End-to-end** (`packages/engine/scripts/e2e.mjs`): the full incident arc + safety refusals against either backend.
-- **Adversarial** (`packages/engine/scripts/adversarial.mjs`): prompt-injected/malicious inputs — every safety
-  control must hold. `e2e.mjs` + `adversarial.mjs` also run in CI.
-- **Chaos** (`packages/engine/scripts/chaos.sh oom|crashloop|imagepull`): inject a failure scenario into kind.
+## Development & quality
+
+- **AI code review on every PR** — pull requests are auto-reviewed by **[Qodo Merge](https://www.qodo.ai/)**
+  (comment `/review`); findings are triaged and real ones fixed before merge.
+- **CI on every push** (`.github/workflows/ci.yml`) — typecheck + **50 unit tests** + end-to-end + adversarial
+  suites (prompt-injection refusals, frozen policy). All safety controls must hold.
+- **pnpm monorepo** (`apps/*`, `packages/*`).
 
 ## Status
 
-Active developer build. Progress tracked in [`TODO.md`](TODO.md).
-
-## License
-
-MIT
+Active build for the TrueForge Agent Harness hackathon. Progress in [`TODO.md`](TODO.md). **License: MIT.**
