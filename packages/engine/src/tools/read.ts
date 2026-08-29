@@ -5,7 +5,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { json, text } from "./shared.js";
 import { backend } from "../backend.js";
-import { serviceHealthFixture } from "../fixtures.js";
 import { triageAlert } from "../triage.js";
 import { runbookFor } from "../runbook.js";
 import { buildPostmortem } from "../postmortem.js";
@@ -38,11 +37,11 @@ export function registerReadTools(server: McpServer): void {
     "get_service_health",
     {
       title: "Get service health",
-      description: "Quick read-only probe of a service's current health and error rate.",
-      inputSchema: { service: z.string().describe("Service / deployment name") },
+      description: "Read-only probe of a deployment's current health: replicas, restarts, memory limit.",
+      inputSchema: { service: z.string().optional().describe("Deployment (default: checkout)") },
       annotations: { readOnlyHint: true },
     },
-    async ({ service }) => json(serviceHealthFixture(service)),
+    async ({ service }) => json(backend.serviceHealth(svcOf(service))),
   );
 
   server.registerTool(

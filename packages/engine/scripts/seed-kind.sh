@@ -47,4 +47,4 @@ kubectl --context "$CTX" -n "$NS" set resources deploy/"$D" --limits=memory=256M
 
 echo "done. checkout now OOMKills at 256Mi, and rollout history shows the real 512Mi->256Mi cut."
 echo "start the engine against the real cluster with:"
-echo "  DEADMAN_CLUSTER=kind npm start"
+echo "  npm start   # (production: set KUBE_CONTEXT / KUBE_NAMESPACE to your cluster)"

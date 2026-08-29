@@ -2,6 +2,10 @@
 
 Progress is tracked here and checked off in the same commit that lands the work.
 
+> Note: the in-memory `sim` backend and `DEADMAN_DEMO_MODE` were later removed. The engine now
+> runs against a real cluster only (`kind` locally, any cluster via `KUBE_CONTEXT` in production).
+> Historical items below that mention the sim record work as it landed at the time.
+
 ## MCP engine
 - [x] Streamable-HTTP MCP transport + server bootstrap
 - [x] Full tool surface with read/write gate annotations
@@ -13,7 +17,7 @@ Progress is tracked here and checked off in the same commit that lands the work.
       status) — real kubectl in kind mode; diagnosis changes when the cluster changes
 - [x] Optional LLM-narrated investigation (Anthropic SDK, claude-opus-4-8, structured output)
       — on when ANTHROPIC_API_KEY present; deterministic fallback; DEADMAN_LLM_NARRATION=off
-- [x] Real `kind` cluster backend (kubectl) behind a swappable interface; sim stays default
+- [x] Real `kind` cluster backend (kubectl) behind a swappable interface (now the only backend)
 - [x] Live end-to-end on real infra: agent → gate → approved → real kubectl fix → verified
 - [x] Self-validate tool inputs (typed schemas + bounds, e.g. mib <= 65536)
 - [x] Live telemetry tools: `get_metrics` (metrics-server), `get_logs`, `get_events`, `get_deploy_history`

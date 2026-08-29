@@ -18,19 +18,15 @@ import { registerDeadmanTools } from "./tools.js";
 import { narrationEnabled } from "./llm.js";
 import { dashboardState } from "./dashboard.js";
 import { backend } from "./backend.js";
-import { demoMode } from "./config.js";
 import { allIncidents } from "./incidents.js";
 import { costReport } from "./cost.js";
 import { policy } from "./classifier.js";
-import { seedDemoIncidents } from "./seed.js";
 import { recent, subscribe } from "./events.js";
-import { injectFailure, runDemo, runBadFixDemo, runInjectionDemo, demoRunning } from "./demo.js";
 import { installAlertIngestion } from "./alerts/webhook.js";
 import { alertsEnabled } from "./alerts/config.js";
 import { attachAuditStore } from "./audit.js";
 import { RedisAuditStore } from "./alerts/persist.js";
 import { renderMetrics } from "./metrics.js";
-import type { Scenario } from "./cluster.js";
 
 // Load mcp/.env (ANTHROPIC_API_KEY etc.) if present - optional, safe when absent.
 try {
@@ -125,59 +121,8 @@ app.get("/dashboard/stream", (req, res) => {
     unsubscribe();
   });
 });
-app.get("/dashboard/seed-demo", (_req, res) => {
-  cors(res);
-  // Seeding wipes and replays the demo stores; refuse outside demo mode so a live audit
-  // trail can never be erased by hitting this endpoint.
-  if (!demoMode()) {
-    res.status(403).json({ seeded: 0, skipped: "seeding is disabled outside demo mode" });
-    return;
-  }
-  res.json(seedDemoIncidents());
-});
-
-const SCENARIOS: readonly Scenario[] = ["oom", "crashloop", "imagepull"];
-const parseScenario = (v: unknown): Scenario => (SCENARIOS.includes(v as Scenario) ? (v as Scenario) : "oom");
-
-// Inject a failure (demo only): resets the sim to a failing scenario, emits an alert event.
-app.post("/dashboard/chaos", (req, res) => {
-  cors(res);
-  if (!demoMode()) return void res.status(403).json({ ok: false, reason: "disabled outside demo mode" });
-  const scenario = parseScenario(req.body?.scenario ?? req.query.scenario);
-  injectFailure(scenario);
-  res.json({ ok: true, scenario });
-});
-
-// Drive the full autonomous cycle to resolution (demo only), streaming events as it goes.
-app.post("/dashboard/demo-run", (req, res) => {
-  cors(res);
-  if (!demoMode()) return void res.status(403).json({ started: false, reason: "disabled outside demo mode" });
-  if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
-  const scenario = parseScenario(req.body?.scenario ?? req.query.scenario);
-  void runDemo(scenario); // fire-and-forget; the cockpit watches the SSE stream
-  res.json({ started: true, scenario });
-});
-
-// Bad-fix demo (demo only): a wrong fix that the watchdog auto-rolls-back, then escalates.
-app.post("/dashboard/demo-badfix", (_req, res) => {
-  cors(res);
-  if (!demoMode()) return void res.status(403).json({ started: false, reason: "disabled outside demo mode" });
-  if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
-  void runBadFixDemo();
-  res.json({ started: true, mode: "badfix" });
-});
-
-// Injection demo (demo only): a prompt-injected alert - flagged, refused, real incident still fixed.
-app.post("/dashboard/demo-injection", (_req, res) => {
-  cors(res);
-  if (!demoMode()) return void res.status(403).json({ started: false, reason: "disabled outside demo mode" });
-  if (demoRunning()) return void res.json({ started: false, reason: "a demo run is already in flight" });
-  void runInjectionDemo();
-  res.json({ started: true, mode: "injection" });
-});
-
 app.get("/healthz", (_req, res) =>
-  res.json({ ok: true, backend: backend.mode, demo: demoMode(), narration: narrationEnabled(), ts: Date.now() }),
+  res.json({ ok: true, backend: backend.mode, narration: narrationEnabled(), ts: Date.now() }),
 );
 
 app.get("/", (_req, res) => res.type("text").send("deadman MCP - POST /mcp · dashboard at /dashboard"));
@@ -231,24 +176,13 @@ app.get("/readyz", async (_req, res) => {
   res.status(ready ? 200 : 503).json({ ready, checks });
 });
 
-// In demo mode, pre-populate the history/safety/cost views with real scenario runs so the
-// platform is fully rendered the instant it boots (deterministic; sim only).
-if (demoMode()) {
-  const { seeded } = seedDemoIncidents();
-  console.log(`[deadman] demo seed: ${seeded} incident(s) replayed through the real pipeline`);
-}
-
 app.listen(PORT, () => {
   console.log(`[deadman] MCP server on http://localhost:${PORT}/mcp`);
-  console.log(
-    "[deadman] tools: investigate_incident, get_service_health, propose_remediation, dry_run,",
-  );
-  console.log(
-    "[deadman]        verify_resolution, restart_pod (SAFE), bump_memory/rollback_deploy/",
-  );
+  console.log("[deadman] tools: investigate_incident, get_service_health, propose_remediation, dry_run,");
+  console.log("[deadman]        verify_resolution, restart_pod (SAFE), bump_memory/rollback_deploy/");
   console.log("[deadman]        delete_pvc/scale_to_zero (GATED, destructiveHint)");
   console.log(`[deadman] investigation narration: ${narrationEnabled() ? "LLM (key present)" : "deterministic"}`);
-  console.log(`[deadman] backend: ${backend.mode}${demoMode() ? " · DEMO MODE (deterministic, sim, OOM scenario)" : ""} · dashboard: /dashboard · health: /healthz`);
+  console.log(`[deadman] backend: ${backend.mode} (real cluster) · dashboard: /dashboard · health: /healthz`);
   console.log(
     `[deadman] alert ingestion: ${alertsEnabled() ? "ON · POST /alerts (BullMQ/Redis → TrueForge session)" : "off (set DEADMAN_ALERTS=1 + Redis to enable)"}`,
   );

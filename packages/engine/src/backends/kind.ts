@@ -1,7 +1,7 @@
 /**
  * Real kubectl backend — a local `kind` cluster for the demo, or ANY real cluster in production.
  *
- * Enabled with DEADMAN_CLUSTER=kind. Every call shells out to `kubectl`, so it drives whatever
+ * This is the only backend. Every call shells out to `kubectl`, so it drives whatever
  * cluster the resolved context points at:
  *   - local demo: KIND_CONTEXT (default `kind-deadman`), seeded from ../k8s/seed.yaml.
  *   - production: set KUBE_CONTEXT to an EKS/GKE/AKS context from your kubeconfig (or the literal

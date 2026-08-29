@@ -4,8 +4,8 @@
  * the BLAST RADIUS (pods affected, disruption, reversibility, a severity badge), and the ROLLBACK
  * plan (the inverse + captured before-state). Read-only: it reads live state and mutates nothing.
  *
- * The sim computes a deterministic, coherent preview; on kind the backend populates `rawDiff`
- * from a real `kubectl diff` and `warnings` from a server dry-run plus a quota headroom check.
+ * The structured delta, blast radius, and rollback are computed here; the backend then populates
+ * `rawDiff` from a real `kubectl diff` and `warnings` from a server dry-run plus a quota check.
  */
 
 import { backend, type RemediationPatch } from "./backend.js";
@@ -20,8 +20,8 @@ function severity(b: Pick<BlastRadius, "stateful" | "reversible" | "disruption" 
 }
 
 /**
- * On a real cluster, replace the templated diff and warnings with a REAL server dry-run + kubectl
- * diff. On the sim (no `previewChange`), the templated preview is returned unchanged.
+ * Replace the templated diff and warnings with a REAL server dry-run + kubectl diff. If the backend
+ * exposes no `previewChange` (or it yields nothing), the templated preview is returned unchanged.
  */
 function withRealPreview(result: RemediationPreview, deployment: string, patch: RemediationPatch): RemediationPreview {
   const probe = backend.previewChange?.(deployment, patch);

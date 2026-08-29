@@ -30,8 +30,8 @@ This is the generative-UI stretch (TrueForge's marquee "custom approval card" fe
 docker run --rm --name tf-p1 -p 8790:8790 -e HOST=0.0.0.0 -e PORT=8790 \
   --add-host host.docker.internal:host-gateway node:22 npx --yes @truefoundry/trueforge
 
-# 2) the engine (MCP server)
-DEADMAN_DEMO_MODE=1 pnpm --filter deadman-mcp start   # :9000
+# 2) the engine (MCP server) - seed the kind scenario first: pnpm --filter deadman-mcp run seed:kind
+pnpm --filter deadman-mcp start   # :9000
 
 # 3) this console
 pnpm --filter @deadman/console dev                    # :5174 (proxies /api -> :8790)

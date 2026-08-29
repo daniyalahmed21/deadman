@@ -48,19 +48,3 @@ export const CANNED_INVESTIGATION: InvestigationResult = {
     "**Recommended fix.** Raise the memory limit to **≥512Mi** and restart. Do **not** delete the PVC.",
   ].join("\n"),
 };
-
-/** A minimal service-health probe result (read-only). */
-export function serviceHealthFixture(service: string): {
-  service: string;
-  status: string;
-  detail: string;
-} {
-  return {
-    service,
-    status: service === "checkout" ? "degraded" : "healthy",
-    detail:
-      service === "checkout"
-        ? "1/3 pods OOMKilling; error rate elevated on /checkout"
-        : "no active alerts",
-  };
-}

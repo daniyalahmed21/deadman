@@ -16,8 +16,8 @@
  *                       rather than being retried forever or silently lost
  *
  * `AlertQueue` is deliberately a narrow interface so a different broker (SQS, Kafka, pg-boss)
- * can be dropped in later without touching the webhook or the bridge — the same seam the engine
- * already uses for its sim/kind cluster backends.
+ * can be dropped in later without touching the webhook or the bridge — the same kind of seam the
+ * engine uses for its cluster backend.
  */
 
 import { Queue } from "bullmq";

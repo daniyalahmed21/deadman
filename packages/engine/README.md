@@ -2,19 +2,20 @@
 
 DEADMAN's SRE engine, exposed to TrueForge as a **remote HTTP MCP server** (streamable-HTTP).
 It is the whole brain: investigation, the tiered tool surface, the safety layers, the
-auto-rollback watchdog, incident memory, and the live event stream. It talks to a cluster
-through a swappable backend, so the same tools run against a deterministic sim or a real
-[kind](https://kind.sigs.k8s.io) cluster.
+auto-rollback watchdog, incident memory, and the live event stream. It talks to a real
+[kind](https://kind.sigs.k8s.io) cluster through the `kind` backend (real `kubectl`), so the
+tools act on real infrastructure.
 
 ## Run
 
 ```sh
 pnpm install
 pnpm dev                 # tsx watch src/server.ts -> http://localhost:9000/mcp
-DEADMAN_DEMO_MODE=1 pnpm start   # deterministic sim + OOM scenario, seeds the cockpit
+pnpm run seed:kind       # seed the OOMKill scenario into the kind cluster
+pnpm start               # run the engine against the real cluster
 ```
 
-`PORT` overrides the port (default 9000).
+Requires a running kind cluster + kubectl. `PORT` overrides the port (default 9000).
 
 ## Register in TrueForge
 
@@ -108,24 +109,22 @@ Every mutating call, executed or refused, is written to the append-only audit tr
   `DEADMAN_LLM_NARRATION=off` forces deterministic (recommended for a repeatable recording),
   and `DEADMAN_LLM_MODEL` overrides the model (default `claude-opus-4-8`).
 
-## Cluster backends
+## Cluster backend
 
-Remediation tools talk to a `ClusterBackend` ([`backend.ts`](src/backend.ts)), selected at
-boot. The tool signatures and output contracts are identical either way:
-
-- **sim** (default): a deterministic in-memory cluster ([`cluster.ts`](src/cluster.ts)).
-  Bulletproof for recording, and what rehearsal forks with `structuredClone`.
-- **kind** (`DEADMAN_CLUSTER=kind`): real `kubectl` against a local kind cluster
-  ([`backends/kind.ts`](src/backends/kind.ts)). Real work, not mocked.
+Remediation tools talk to a `ClusterBackend` ([`backend.ts`](src/backend.ts)), which exports the
+single `kind` backend: real `kubectl` ([`backends/kind.ts`](src/backends/kind.ts)) against a
+local kind cluster for dev, or any real cluster in production. Real work, not mocked.
 
 ```sh
 pnpm run seed:kind                 # create the kind cluster + seed the OOMKill scenario
-DEADMAN_CLUSTER=kind pnpm start    # run the engine against the real cluster
+pnpm start                         # run the engine against the real cluster
 ```
 
 The failing scenario ([`k8s/seed.yaml`](k8s/seed.yaml)): a `checkout` deployment that OOMKills
-at a 256Mi limit; `bump_memory` to 512Mi or more resolves it. `data-0` is a healthy PVC that is
-**not** implicated (the wrong, irreversible fix the agent should decline).
+at a 256Mi limit (the workload is `polinux/stress --vm-bytes 350M`), with a real 512Mi->256Mi
+rollout history that change-correlation reads from actual ReplicaSets; `bump_memory` to 512Mi or
+more resolves it. `data-0` is a healthy PVC that is **not** implicated (the wrong, irreversible
+fix the agent should decline).
 
 ### Connect a real cluster (production)
 
@@ -134,8 +133,7 @@ kubeconfig. No code change; it drives whatever the resolved context targets.
 
 ```sh
 kubectl apply -f k8s/rbac.yaml     # least-privilege ServiceAccount + Role (see the file header)
-DEADMAN_CLUSTER=kind \
-  KUBE_CONTEXT=<your-context> \    # or "current" to use kubectl's current-context
+KUBE_CONTEXT=<your-context> \      # or "current" to use kubectl's current-context
   KUBE_NAMESPACE=<your-namespace> \
   pnpm start
 ```
@@ -162,9 +160,6 @@ read model:
   reachable, and Redis too when ingestion is on — 503 when a dependency is down).
 - `GET /metrics` Prometheus metrics: safety outcomes (executed vs refused), incident throughput,
   and, when ingestion is on, alert queue depth and dead-letter count.
-- Demo-only (refused unless `DEADMAN_DEMO_MODE`): `POST /dashboard/chaos`, `/demo-run`,
-  `/demo-badfix`, `/demo-injection`, and `GET /dashboard/seed-demo`. These drive the scripted
-  scenarios and can never erase a live audit trail.
 
 ## Alert ingestion (production)
 
@@ -220,7 +215,6 @@ token set, remote calls are refused and ingestion is loopback-only).
 
 | Env | Effect |
 |---|---|
-| `DEADMAN_DEMO_MODE` | Forces sim + deterministic + OOM scenario, seeds the cockpit. One flag for an identical run every take. |
 | `DEADMAN_ALERTS` | Enable `POST /alerts` ingestion (needs Redis). Off ⇒ pure MCP server. |
 | `REDIS_URL` | Redis connection for the queue (default `redis://127.0.0.1:6379`). |
 | `DEADMAN_ALERT_TOKEN` | Bearer token required for non-loopback `POST /alerts` callers. |
@@ -228,7 +222,7 @@ token set, remote calls are refused and ingestion is loopback-only).
 | `DEADMAN_AGENT` | Agent name the worker drives (default `deadman`). |
 | `DEADMAN_ALERT_ATTEMPTS` / `_BACKOFF_MS` / `_DEDUP_WINDOW_SEC` / `_CONCURRENCY` | Queue retry, backoff, dedup window, and worker concurrency tuning. |
 | `DEADMAN_AUDIT_KEY` | Redis key for the durable audit trail (default `deadman:audit`). |
-| `DEADMAN_CLUSTER=kind` | Use the real kind backend instead of the sim. |
+| `KUBE_CONTEXT` / `KUBE_NAMESPACE` | Select the target cluster/namespace in production (default local `kind-deadman` / `prod`). |
 | `ANTHROPIC_API_KEY` | Enables LLM narration (in `.env`). |
 | `DEADMAN_LLM_NARRATION=off` | Force deterministic prose. |
 | `DEADMAN_LLM_MODEL` | Override the narration model. |
@@ -237,11 +231,11 @@ token set, remote calls are refused and ingestion is loopback-only).
 
 ## Tests
 
-`pnpm test` runs the vitest suite (98 tests across 18 files): the safety floor and frozen
+`pnpm test` runs the vitest suite (75 tests across 13 files): the safety floor and frozen
 policy, prompt-injection refusals (`adversarial`), the watchdog, change-correlation, recall,
-rehearsal, preview, triage, investigation, postmortem, the sim cluster, alert normalisation +
+rehearsal, preview, triage, investigation, postmortem, the kind cluster, alert normalisation +
 dedup (`alerts`), and audit persistence + metrics + the idempotency guard (`tier1`). The output
-contracts do not change when a backend or narration is swapped, only the tool bodies.
+contracts do not change when narration is swapped, only the tool bodies.
 
 `pnpm lint` (ESLint) and `pnpm test:coverage` (v8) round out the quality gates; `pnpm lint` runs
 in CI and `max-lines` is a hard error, so no file may sprawl past 500 lines.

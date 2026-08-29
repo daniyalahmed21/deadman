@@ -14,7 +14,6 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { InvestigationResult } from "./fixtures.js";
-import { demoMode } from "./config.js";
 import { recordInvestigation, recordUsage } from "./cost.js";
 
 const MODEL = process.env.DEADMAN_LLM_MODEL ?? "claude-opus-4-8";
@@ -62,7 +61,7 @@ const SCHEMA = {
 let cached: Anthropic | null | undefined;
 function client(): Anthropic | null {
   if (cached !== undefined) return cached;
-  const off = demoMode() || (process.env.DEADMAN_LLM_NARRATION ?? "auto").toLowerCase() === "off";
+  const off = (process.env.DEADMAN_LLM_NARRATION ?? "auto").toLowerCase() === "off";
   cached = !off && process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
   return cached;
 }

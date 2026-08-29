@@ -70,7 +70,7 @@ An incident runs in four phases, driven by the TrueForge agent
 
 One click each, shown step by step:
 
-1. **Simulate incident** - trigger OOMKilled, investigate, propose, *approve in TrueForge*, fix,
+1. **Incident** - trigger OOMKilled, investigate, propose, *approve in TrueForge*, fix,
    verify, **resolved**.
 2. **Bad fix, auto-rollback** - set a limit that's still too small; the watchdog catches that it did
    not hold, **undoes it automatically**, and moves up to the right fix.
@@ -81,22 +81,24 @@ One click each, shown step by step:
 
 ```sh
 pnpm install
-pnpm --filter deadman-mcp test              # 98 unit + adversarial tests
-DEADMAN_DEMO_MODE=1 pnpm engine             # engine (sim backend) -> http://localhost:9000/mcp
+pnpm --filter deadman-mcp test              # 75 unit + adversarial tests
+pnpm --filter deadman-mcp run seed:kind     # seed the OOMKill scenario into the kind cluster
+pnpm engine                                  # engine -> http://localhost:9000/mcp
 pnpm dev                                     # cockpit -> http://localhost:5173
 ```
 
 Add `http://host.docker.internal:9000/mcp` in **TrueForge, Settings, Connectors**, then run the
-whole flow from the TrueForge chat. To use a real cluster instead of the sim:
-`pnpm --filter deadman-mcp run seed:kind`, then `DEADMAN_CLUSTER=kind pnpm engine`.
+whole flow from the TrueForge chat. The engine acts on a real cluster via the `kind` backend: a
+local kind cluster for dev, or any EKS/GKE/AKS cluster selected with `KUBE_CONTEXT` +
+`KUBE_NAMESPACE`. Requires a running kind cluster + kubectl.
 
 ## Layout
 
 - **[`packages/engine/`](packages/engine/)** - the DEADMAN engine, a remote streamable-HTTP MCP
   server. It holds the tools (each tagged read or write for the gate), the blast-radius classifier,
   the sensitive-target floor, the auto-rollback watchdog, change-correlation, sandbox rehearsal,
-  approval-diff preview, runbook memory, an add-only audit trail, an SSE event stream, and both
-  cluster backends (`sim`, or any real cluster via `kind`). It can also take in production alerts
+  approval-diff preview, runbook memory, an add-only audit trail, an SSE event stream, and the
+  `kind` cluster backend (real `kubectl` against a local kind cluster or any real cluster). It can also take in production alerts
   (webhook -> durable Redis queue -> TrueForge session), plus `/metrics` and `/readyz`. See its
   [README](packages/engine/README.md).
 - **[`apps/cockpit/`](apps/cockpit/)** - the React app: the marketing landing at `/` and the live
@@ -111,7 +113,7 @@ whole flow from the TrueForge chat. To use a real cluster instead of the sim:
 ## CI
 
 - **On every push** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): ESLint, typecheck,
-  and 98 unit, end-to-end, and adversarial tests (prompt-injection refusals, frozen policy). Every
+  and 75 unit, end-to-end, and adversarial tests (prompt-injection refusals, frozen policy). Every
   safety control has to hold, and `max-lines` is a hard lint error, so no file grows past 500 lines.
 - **pnpm monorepo** (`apps/*`, `packages/*`).
 
