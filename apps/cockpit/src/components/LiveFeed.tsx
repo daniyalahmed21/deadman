@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Activity, Ban, CheckCircle2, RotateCcw, Search, ShieldCheck, Wrench } from "lucide-react";
+import { Activity, Ban, CheckCircle2, FlaskConical, GitCommitVertical, History, RotateCcw, Search, ShieldCheck, Wrench } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { AgentEvent, EventKind, EventSeverity } from "@deadman/shared";
@@ -15,6 +15,16 @@ const ICON: Record<EventKind, LucideIcon> = {
   rollback: RotateCcw,
   resolved: CheckCircle2,
 };
+
+/** Give the richer `signal` events (correlation, recall, rehearsal) their own icon. */
+function iconFor(e: AgentEvent): LucideIcon {
+  if (e.kind === "signal") {
+    if (/suspect/i.test(e.message)) return GitCommitVertical;
+    if (/^recall/i.test(e.message)) return History;
+    if (/rehears/i.test(e.message)) return FlaskConical;
+  }
+  return ICON[e.kind];
+}
 
 const TONE: Record<EventSeverity, string> = {
   info: "text-muted-foreground",
@@ -35,7 +45,7 @@ export function LiveFeed({ events }: { events: AgentEvent[] }) {
   return (
     <ul className="max-h-[420px] overflow-y-auto">
       {ordered.map((e) => {
-        const Icon = ICON[e.kind];
+        const Icon = iconFor(e);
         return (
           <motion.li
             key={e.seq}

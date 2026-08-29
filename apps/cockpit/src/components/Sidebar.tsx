@@ -93,7 +93,7 @@ export function Sidebar({
               onClick={() => setView(key)}
               title={collapsed ? label : undefined}
               className={cn(
-                "flex items-center rounded-xl text-sm transition-colors",
+                "flex items-center rounded-xl text-sm transition-colors duration-200 ease-out",
                 collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
                 isActive
                   ? "bg-muted font-medium text-foreground"

@@ -47,18 +47,114 @@ export interface AuditEntry {
   at?: number;
 }
 
+export type ChangeKind = "deploy" | "image" | "mem_limit" | "replicas" | "config";
+
+export interface ChangeEvent {
+  revision: number;
+  at: number; // epoch ms
+  kind: ChangeKind;
+  summary: string;
+  memLimitMib?: number;
+  /** the limit before this change - lets correlation detect a memory *decrease* (the OOM culprit) */
+  previousMemLimitMib?: number;
+  imageTag?: string;
+  replicas?: number;
+}
+
+/** Which recent change most plausibly caused this incident (temporal proximity x plausibility). */
+export interface ChangeCorrelation {
+  suspected: ChangeEvent | null;
+  confidence: number; // 0..1
+  minutesBefore: number | null;
+  reason: string;
+  candidates: { change: ChangeEvent; score: number }[];
+}
+
 export interface Investigation {
   root_cause: string;
   evidence: string[];
   validity_score: number;
   is_noise: boolean;
   recommended_action?: string;
+  change?: ChangeCorrelation;
 }
 
 export interface PodMetric {
   name: string;
   memMib: number;
   cpuMillis: number;
+}
+
+/** A past incident recalled as similar to the current one, with the fix that resolved it. */
+export interface RecallMatch {
+  id: string;
+  service: string;
+  signal?: string;
+  rootCause: string;
+  fix: string[];
+  score: number;
+  strength: "strong" | "likely" | "weak";
+  agoDays: number;
+}
+
+/** A structured field-level change, for the approval-gate diff. */
+export interface FieldChange {
+  path: string;
+  before: unknown;
+  after: unknown;
+}
+
+/** How far a remediation reaches - the concise blast-radius the human weighs at the gate. */
+export interface BlastRadius {
+  podsAffected: number;
+  disruption: "none" | "rolling" | "restart" | "downtime";
+  stateful: boolean;
+  reversible: boolean;
+  severity: "low" | "medium" | "high";
+}
+
+/** How to undo a remediation (null = irreversible). */
+export interface RollbackPlan {
+  method: string;
+  inverse: string;
+  beforeState: Record<string, unknown>;
+  note?: string;
+}
+
+/** The full context shown at the human-approval gate before a destructive action runs. */
+export interface RemediationPreview {
+  action: string;
+  target: string;
+  tier: Tier;
+  summary: string;
+  changes: FieldChange[];
+  rawDiff: string;
+  blastRadius: BlastRadius;
+  rollback: RollbackPlan | null;
+  warnings: string[];
+  destructive: boolean;
+}
+
+/** Result of rehearsing a remediation in an isolated fork of the cluster before touching prod. */
+export interface RehearsalResult {
+  action: string;
+  target: string;
+  backend: BackendMode;
+  /** true if we actually ran the action in a fork (false = backend can't rehearse in-process) */
+  rehearsed: boolean;
+  /** did the fork become healthy after the action? */
+  pass: boolean;
+  before: { healthy: boolean; memLimitMib: number };
+  after: { healthy: boolean; memLimitMib: number };
+  detail: string;
+}
+
+/** The agent's remediation plan for the current incident: the proven fix, its diff, and a rehearsal. */
+export interface Insights {
+  recommendedAction: string | null;
+  recall: RecallMatch | null;
+  preview: RemediationPreview | null;
+  rehearsal: RehearsalResult | null;
 }
 
 export interface DashboardState {
@@ -73,6 +169,7 @@ export interface DashboardState {
   };
   metrics: { workingSetMib: number; cpuMillis: number };
   investigation: Investigation | null;
+  insights: Insights;
   audit: AuditEntry[];
   ts: number;
 }

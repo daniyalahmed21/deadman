@@ -26,6 +26,15 @@ import * as incidents from "./incidents.js";
 import { buildPostmortem } from "./postmortem.js";
 import { emit } from "./events.js";
 import { armWatchdog } from "./watchdog.js";
+import { correlateChange, symptomOf } from "./correlate.js";
+import { rehearse } from "./rehearse.js";
+import { previewRemediation } from "./preview.js";
+import { recallSimilar, type AlertSketch } from "./recall.js";
+import { allMemories, rememberIncident } from "./memory.js";
+import { buildRemediationPlan } from "./plan.js";
+
+/** Map a coarse symptom to the k8s signal label used in incident memory. */
+const SIGNAL_LABEL: Record<string, string> = { oom: "OOMKilled", imagepull: "ImagePullBackOff", crashloop: "CrashLoopBackOff" };
 
 const WATCHDOG_WINDOW_MS = Number(process.env.DEADMAN_WATCHDOG_WINDOW_MS ?? 4000);
 const WATCHDOG_INTERVAL_MS = Number(process.env.DEADMAN_WATCHDOG_INTERVAL_MS ?? 1000);
@@ -96,6 +105,26 @@ export function registerDeadmanTools(server: McpServer): void {
       const svc = service ?? "checkout";
       emit({ kind: "phase", phase: "investigate", target: svc, severity: "info", message: `Investigating ${svc}: ${alert ?? "alert"}` });
       const result = await narrate(backend.investigate(svc), alert ?? "", svc);
+
+      // Change-correlation: what shipped right before this? Prepend the suspect to the evidence.
+      const corr = correlateChange(
+        backend.changeHistory(svc),
+        Date.now(),
+        symptomOf(result.root_cause),
+        backend.serviceHealth(svc).memLimitMib,
+      );
+      result.change = corr;
+      if (corr.suspected) {
+        result.evidence = [
+          `suspected change: rev ${corr.suspected.revision} "${corr.suspected.summary}" ~${corr.minutesBefore}m before onset (confidence ${corr.confidence})`,
+          ...result.evidence,
+        ];
+        emit({ kind: "signal", phase: "investigate", target: svc, severity: "warn", message: corr.reason });
+      }
+
+      // Compute the remediation plan (recall + preview + rehearsal) for the recommended fix.
+      buildRemediationPlan(svc, result.root_cause);
+
       incident.setInvestigation(svc, result);
       const snap = incident.getInvestigation();
       if (snap) incidents.openIncident(snap, alert, audit.all().length, backend.serviceHealth(svc).memLimitMib);
@@ -195,8 +224,22 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ root_cause }) => {
-      void root_cause;
+      // Recall a proven fix from memory: has a similar incident happened before?
+      const svc = incident.getInvestigation()?.deployment ?? "checkout";
+      const symptom = symptomOf(root_cause);
+      const alert: AlertSketch = { service: svc, signal: SIGNAL_LABEL[symptom], text: root_cause };
+      const recall = recallSimilar(alert, allMemories());
+      if (recall) {
+        emit({
+          kind: "signal",
+          phase: "remediate",
+          target: svc,
+          severity: "info",
+          message: `Recall: ${recall.strength} match to ${recall.id} (${recall.agoDays}d ago) - previously resolved by ${recall.fix.join(", ")}`,
+        });
+      }
       return json({
+        recall,
         actions: [
           {
             tool: "restart_pod",
@@ -260,6 +303,75 @@ export function registerDeadmanTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "preview_remediation",
+    {
+      title: "Preview remediation (approval diff)",
+      description:
+        "Compute what a remediation would change: a field-level diff, blast radius (pods, " +
+        "disruption, reversibility, severity), and the rollback plan - the full context to " +
+        "show a human at the approval gate before a destructive action runs. Read-only.",
+      inputSchema: {
+        action: z.string().describe("Remediation tool, e.g. bump_memory / delete_pvc"),
+        target: z.string().describe("Deployment / resource"),
+        mib: z.number().int().positive().optional().describe("New memory limit (for bump_memory)"),
+        replicas: z.number().int().min(0).optional().describe("Target replicas (for scale_deployment)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ action, target, mib, replicas }) => json(previewRemediation(action, target, { mib, replicas })),
+  );
+
+  server.registerTool(
+    "recall_similar",
+    {
+      title: "Recall similar past incident",
+      description:
+        "Search incident memory for a past incident similar to this alert and return the fix that " +
+        "resolved it, with a similarity score. A suggestion from memory, not a decision. Read-only.",
+      inputSchema: {
+        service: z.string().describe("Affected service"),
+        signal: z.string().optional().describe("Failure mode, e.g. OOMKilled / CrashLoopBackOff"),
+        alert: z.string().describe("Alert text / root cause"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service, signal, alert }) => json({ match: recallSimilar({ service, signal, text: alert }, allMemories()) }),
+  );
+
+  server.registerTool(
+    "rehearse_remediation",
+    {
+      title: "Rehearse remediation in a sandbox",
+      description:
+        "Fork the current cluster state into an isolated sandbox, apply the proposed action to " +
+        "the fork, and report whether the fork became healthy - BEFORE the real gated action runs. " +
+        "Does NOT touch prod. Use this to prove a fix works (or that a wrong fix does not) before approval.",
+      inputSchema: {
+        action: z.string().describe("Remediation tool to rehearse, e.g. bump_memory"),
+        target: z.string().describe("Deployment / target"),
+        mib: z.number().int().positive().optional().describe("New memory limit (for bump_memory)"),
+        replicas: z.number().int().min(0).optional().describe("Target replicas (for scale_deployment)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ action, target, mib, replicas }) => {
+      const result = rehearse(action, target, { mib, replicas });
+      emit({
+        kind: "signal",
+        phase: "remediate",
+        target,
+        severity: result.rehearsed ? (result.pass ? "success" : "warn") : "info",
+        message: result.rehearsed
+          ? result.pass
+            ? `Rehearsed in sandbox: PASS - ${action} resolves ${target} (${result.before.memLimitMib}Mi -> ${result.after.memLimitMib}Mi, healthy)`
+            : `Rehearsed in sandbox: FAIL - ${action} does NOT resolve ${target} (root cause unaddressed)`
+          : `Rehearsal skipped: ${result.detail}`,
+      });
+      return json(result);
+    },
+  );
+
+  server.registerTool(
     "verify_resolution",
     {
       title: "Verify resolution",
@@ -270,7 +382,19 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ target }) => {
       const health = backend.serviceHealth(target);
-      incidents.closeIncident(target, health.healthy, audit.all(), health.memLimitMib);
+      const closed = incidents.closeIncident(target, health.healthy, audit.all(), health.memLimitMib);
+      // On resolution, commit the incident + its winning fix to memory so recall gets smarter.
+      if (health.healthy && closed) {
+        const fix = [...new Set(closed.timeline.filter((e) => !e.isError).map((e) => e.action))];
+        rememberIncident({
+          id: closed.id,
+          service: closed.service,
+          signal: SIGNAL_LABEL[symptomOf(closed.rootCause ?? "")],
+          rootCause: closed.rootCause ?? "",
+          fix,
+          at: Date.now(),
+        });
+      }
       emit({
         kind: health.healthy ? "resolved" : "verify",
         phase: "verify",

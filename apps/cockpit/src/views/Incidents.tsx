@@ -6,7 +6,8 @@ import { Pill, StatusPill, TierBadge } from "@/components/ui/badge";
 import { EvidenceList } from "@/components/ui/evidence";
 import { PageHeader } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
-import { StatBlock } from "@/components/ui/statblock";
+import { StatBlock, StatBlockSkeleton } from "@/components/ui/statblock";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePoll } from "@/lib/usePoll";
 import { cn, num } from "@/lib/utils";
 import type { IncidentDetail } from "@deadman/shared";
@@ -21,6 +22,19 @@ export function Incidents() {
   useEffect(() => {
     if (!selectedId && incidents.length) setSelectedId(incidents[0].id);
   }, [incidents, selectedId]);
+
+  if (!data) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Incidents" subtitle="History and replay" />
+        <StatBlockSkeleton />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.1fr_1fr]">
+          <Skeleton className="h-72 rounded-2xl" />
+          <Skeleton className="h-72 rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
 
   const selected = incidents.find((i) => i.id === selectedId) ?? null;
   const resolvedCount = incidents.filter((i) => i.resolved).length;
@@ -59,7 +73,7 @@ export function Incidents() {
                       <button
                         onClick={() => setSelectedId(i.id)}
                         className={cn(
-                          "flex w-full items-center gap-3 border-t px-5 py-3.5 text-left transition-colors first:border-t-0 hover:bg-muted/50",
+                          "flex w-full items-center gap-3 border-t px-5 py-3.5 text-left transition-colors duration-200 ease-out first:border-t-0 hover:bg-muted/50",
                           i.id === selectedId && "bg-muted",
                         )}
                       >

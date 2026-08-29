@@ -15,6 +15,8 @@ import * as incidents from "./incidents.js";
 import * as audit from "./audit.js";
 import { recordInvestigation, resetCost } from "./cost.js";
 import { safeAction, gatedAction } from "./remediation.js";
+import { correlateChange, symptomOf } from "./correlate.js";
+import { buildRemediationPlan } from "./plan.js";
 
 const SERVICE = "checkout";
 
@@ -58,7 +60,14 @@ function runScenario(plan: ScenarioPlan): void {
   recordInvestigation();
 
   const result = backend.investigate(SERVICE);
+  result.change = correlateChange(
+    backend.changeHistory(SERVICE),
+    Date.now(),
+    symptomOf(result.root_cause),
+    backend.serviceHealth(SERVICE).memLimitMib,
+  );
   incident.setInvestigation(SERVICE, result);
+  buildRemediationPlan(SERVICE, result.root_cause);
   const snap = incident.getInvestigation();
   if (!snap) return;
 
