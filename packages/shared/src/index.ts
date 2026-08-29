@@ -47,12 +47,36 @@ export interface AuditEntry {
   at?: number;
 }
 
+export type ChangeKind = "deploy" | "image" | "mem_limit" | "replicas" | "config";
+
+export interface ChangeEvent {
+  revision: number;
+  at: number; // epoch ms
+  kind: ChangeKind;
+  summary: string;
+  memLimitMib?: number;
+  /** the limit before this change - lets correlation detect a memory *decrease* (the OOM culprit) */
+  previousMemLimitMib?: number;
+  imageTag?: string;
+  replicas?: number;
+}
+
+/** Which recent change most plausibly caused this incident (temporal proximity x plausibility). */
+export interface ChangeCorrelation {
+  suspected: ChangeEvent | null;
+  confidence: number; // 0..1
+  minutesBefore: number | null;
+  reason: string;
+  candidates: { change: ChangeEvent; score: number }[];
+}
+
 export interface Investigation {
   root_cause: string;
   evidence: string[];
   validity_score: number;
   is_noise: boolean;
   recommended_action?: string;
+  change?: ChangeCorrelation;
 }
 
 export interface PodMetric {

@@ -26,6 +26,7 @@ import * as incidents from "./incidents.js";
 import { buildPostmortem } from "./postmortem.js";
 import { emit } from "./events.js";
 import { armWatchdog } from "./watchdog.js";
+import { correlateChange, symptomOf } from "./correlate.js";
 
 const WATCHDOG_WINDOW_MS = Number(process.env.DEADMAN_WATCHDOG_WINDOW_MS ?? 4000);
 const WATCHDOG_INTERVAL_MS = Number(process.env.DEADMAN_WATCHDOG_INTERVAL_MS ?? 1000);
@@ -96,6 +97,23 @@ export function registerDeadmanTools(server: McpServer): void {
       const svc = service ?? "checkout";
       emit({ kind: "phase", phase: "investigate", target: svc, severity: "info", message: `Investigating ${svc}: ${alert ?? "alert"}` });
       const result = await narrate(backend.investigate(svc), alert ?? "", svc);
+
+      // Change-correlation: what shipped right before this? Prepend the suspect to the evidence.
+      const corr = correlateChange(
+        backend.changeHistory(svc),
+        Date.now(),
+        symptomOf(result.root_cause),
+        backend.serviceHealth(svc).memLimitMib,
+      );
+      result.change = corr;
+      if (corr.suspected) {
+        result.evidence = [
+          `suspected change: rev ${corr.suspected.revision} "${corr.suspected.summary}" ~${corr.minutesBefore}m before onset (confidence ${corr.confidence})`,
+          ...result.evidence,
+        ];
+        emit({ kind: "signal", phase: "investigate", target: svc, severity: "warn", message: corr.reason });
+      }
+
       incident.setInvestigation(svc, result);
       const snap = incident.getInvestigation();
       if (snap) incidents.openIncident(snap, alert, audit.all().length, backend.serviceHealth(svc).memLimitMib);

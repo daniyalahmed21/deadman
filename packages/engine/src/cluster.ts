@@ -10,6 +10,7 @@
  */
 
 import { demoMode } from "./config.js";
+import type { ChangeEvent } from "@deadman/shared";
 
 export interface PodState {
   name: string;
@@ -125,6 +126,28 @@ export function clusterEventsSim(deployment: string): string[] {
 export function deployHistorySim(deployment: string): string[] {
   const limit = state.deployments[deployment]?.memLimitMib ?? 256;
   return ["REVISION  CHANGE-CAUSE", "1         initial deploy", `2         memory limit set to ${limit}Mi`];
+}
+
+/**
+ * Structured change history for correlation - synthetic but coherent, anchored to the current
+ * scenario, with timestamps relative to now so the "smoking gun" is always demo-fresh: the OOM
+ * scenario's most recent change is a memory-limit *cut* ~4 minutes before the incident.
+ */
+export function changeHistorySim(deployment: string): ChangeEvent[] {
+  const now = Date.now();
+  const cur = state.deployments[deployment]?.memLimitMib ?? 256;
+  const history: ChangeEvent[] = [
+    { revision: 1, at: now - 3 * 86_400_000, kind: "deploy", summary: "initial deploy", memLimitMib: 512 },
+    { revision: 2, at: now - 26 * 3_600_000, kind: "config", summary: "add readiness probe" },
+  ];
+  if (state.scenario === "oom") {
+    history.push({ revision: 3, at: now - 4 * 60_000, kind: "mem_limit", summary: `mem limit 512Mi -> ${cur}Mi`, memLimitMib: cur, previousMemLimitMib: 512 });
+  } else if (state.scenario === "imagepull") {
+    history.push({ revision: 3, at: now - 6 * 60_000, kind: "image", summary: "image checkout:v42 -> checkout:v43-broken", imageTag: "v43-broken" });
+  } else if (state.scenario === "crashloop") {
+    history.push({ revision: 3, at: now - 8 * 60_000, kind: "deploy", summary: "rollout v44 (new config)" });
+  }
+  return history;
 }
 
 export function snapshotHealth(deployment: string): {

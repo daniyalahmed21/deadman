@@ -13,6 +13,7 @@ import * as sim from "./cluster.js";
 import { kindBackend } from "./backends/kind.js";
 import { buildInvestigation } from "./investigate.js";
 import type { InvestigationResult } from "./fixtures.js";
+import type { ChangeEvent } from "@deadman/shared";
 import { demoMode } from "./config.js";
 
 export interface HealthSnapshot {
@@ -43,6 +44,8 @@ export interface ClusterBackend {
   logs(deployment: string, lines: number): string[];
   events(deployment: string): string[];
   deployHistory(deployment: string): string[];
+  /** Structured recent-change history, for change-correlation. */
+  changeHistory(deployment: string): ChangeEvent[];
   deploymentMem(deployment: string): number | undefined;
   deploymentReplicas(deployment: string): number | undefined;
   pvcExists(name: string): boolean;
@@ -76,6 +79,7 @@ const simBackend: ClusterBackend = {
   logs: (d, n) => sim.podLogsSim(d, n),
   events: (d) => sim.clusterEventsSim(d),
   deployHistory: (d) => sim.deployHistorySim(d),
+  changeHistory: (d) => sim.changeHistorySim(d),
   deploymentMem: (d) => sim.getDeployment(d)?.memLimitMib,
   deploymentReplicas: (d) => sim.getDeployment(d)?.replicas,
   pvcExists: (n) => sim.pvcExists(n),

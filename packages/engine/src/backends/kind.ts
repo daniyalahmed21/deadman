@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import type { ClusterBackend, HealthSnapshot, Metrics } from "../backend.js";
 import { buildInvestigation } from "../investigate.js";
 import type { InvestigationResult } from "../fixtures.js";
+import type { ChangeEvent } from "@deadman/shared";
 
 const CTX = process.env.KIND_CONTEXT ?? "kind-deadman";
 const NS = process.env.KIND_NAMESPACE ?? "prod";
@@ -172,6 +173,42 @@ export const kindBackend: ClusterBackend = {
   deployHistory(deployment) {
     const r = nsTry(["rollout", "history", `deploy/${deployment}`]);
     return r.ok ? r.out.split("\n").filter(Boolean) : [`(no history: ${r.out})`];
+  },
+
+  changeHistory(deployment): ChangeEvent[] {
+    // Read the deployment's ReplicaSets and diff consecutive revisions into typed change events.
+    const r = nsTry(["get", "rs", "-o", "json"]);
+    if (!r.ok) return [];
+    let items: Array<Record<string, any>> = [];
+    try {
+      items = (JSON.parse(r.out).items ?? []) as Array<Record<string, any>>;
+    } catch {
+      return [];
+    }
+    const rss = items
+      .filter((rs) => String(rs.metadata?.name ?? "").startsWith(`${deployment}-`))
+      .map((rs) => {
+        const c = rs.spec?.template?.spec?.containers?.[0] ?? {};
+        return {
+          revision: Number(rs.metadata?.annotations?.["deployment.kubernetes.io/revision"] ?? 0),
+          at: Date.parse(rs.metadata?.creationTimestamp ?? "") || Date.now(),
+          image: (c.image as string | undefined) ?? "",
+          mem: parseMemMib((c.resources?.limits?.memory as string | undefined) ?? ""),
+        };
+      })
+      .filter((rs) => rs.revision > 0)
+      .sort((a, b) => a.revision - b.revision);
+
+    return rss.map((rs, i): ChangeEvent => {
+      const prev = rss[i - 1];
+      if (prev && rs.image && rs.image !== prev.image) {
+        return { revision: rs.revision, at: rs.at, kind: "image", summary: `image ${prev.image} -> ${rs.image}`, imageTag: rs.image };
+      }
+      if (prev && rs.mem > 0 && prev.mem > 0 && rs.mem !== prev.mem) {
+        return { revision: rs.revision, at: rs.at, kind: "mem_limit", summary: `mem limit ${prev.mem}Mi -> ${rs.mem}Mi`, memLimitMib: rs.mem, previousMemLimitMib: prev.mem };
+      }
+      return { revision: rs.revision, at: rs.at, kind: "deploy", summary: `rollout revision ${rs.revision}` };
+    });
   },
 
   deploymentMem(deployment) {

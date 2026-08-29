@@ -4,6 +4,8 @@
  * the body of `investigate_incident`, not this output contract.
  */
 
+import type { ChangeCorrelation } from "@deadman/shared";
+
 export interface InvestigationResult {
   root_cause: string;
   evidence: string[];
@@ -14,6 +16,8 @@ export interface InvestigationResult {
   summary: string;
   /** the remediation tool this scenario points to (e.g. bump_memory, rollback_deploy) */
   recommended_action?: string;
+  /** the change most likely to have caused this incident (temporal + causal correlation) */
+  change?: ChangeCorrelation;
 }
 
 export const CANNED_INVESTIGATION: InvestigationResult = {

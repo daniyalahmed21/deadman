@@ -18,6 +18,7 @@ import { triageAlert } from "./triage.js";
 import { recordInvestigation } from "./cost.js";
 import { safeAction, gatedAction } from "./remediation.js";
 import { armWatchdog } from "./watchdog.js";
+import { correlateChange, symptomOf } from "./correlate.js";
 import { emit } from "./events.js";
 
 const SERVICE = "checkout";
@@ -87,12 +88,18 @@ export async function runDemo(scenario: Scenario): Promise<void> {
     emit({ kind: "phase", phase: "investigate", target: SERVICE, severity: "info", message: `Investigating ${SERVICE}` });
     recordInvestigation();
     const inv = backend.investigate(SERVICE);
+    const memBefore = backend.serviceHealth(SERVICE).memLimitMib;
+    const corr = correlateChange(backend.changeHistory(SERVICE), Date.now(), symptomOf(inv.root_cause), memBefore);
+    inv.change = corr;
     incident.setInvestigation(SERVICE, inv);
     const snap = incident.getInvestigation();
-    const memBefore = backend.serviceHealth(SERVICE).memLimitMib;
     if (snap) incidents.openIncident(snap, plan.alert, audit.all().length, memBefore);
     emit({ kind: "signal", phase: "investigate", severity: "warn", message: `Root cause: ${inv.root_cause}` });
-    await sleep(1100);
+    await sleep(900);
+    if (corr.suspected) {
+      emit({ kind: "signal", phase: "investigate", severity: "warn", message: corr.reason });
+      await sleep(1000);
+    }
 
     emit({ kind: "proposal", phase: "remediate", severity: "info", message: `Proposed fix: ${plan.fix}` });
     await sleep(800);

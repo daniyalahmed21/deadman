@@ -29,6 +29,7 @@ export function dashboardState() {
           evidence: inv.evidence,
           validity_score: inv.validity_score,
           is_noise: inv.is_noise,
+          change: inv.change,
         }
       : null,
     audit: audit.all(),
