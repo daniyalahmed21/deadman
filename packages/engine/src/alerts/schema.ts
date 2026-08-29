@@ -17,6 +17,60 @@ import { z } from "zod";
 
 export type Severity = "critical" | "warning" | "info";
 
+/** Non-empty trimmed string, else undefined. */
+function str(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+}
+
+/**
+ * Pull the identifying fields from a raw payload, reaching into the NESTED shapes real monitors
+ * actually send — not just flat top-level keys:
+ *   - Alertmanager / Grafana groups: `commonLabels`, `commonAnnotations`, `groupLabels`, `alerts[0]`
+ *   - PagerDuty v3 webhook: `event.data`
+ * Used by the schema's refine, `normalizeAlert`, and the dedup key so every path agrees.
+ */
+/** First non-empty string among the candidates. */
+function firstStr(...vals: unknown[]): string | undefined {
+  for (const v of vals) {
+    const t = str(v);
+    if (t) return t;
+  }
+  return undefined;
+}
+
+/** The nested sub-objects real monitors use, safely coerced. */
+function nestedParts(raw: Record<string, unknown>) {
+  const alerts = Array.isArray(raw.alerts) ? (raw.alerts as Record<string, unknown>[]) : [];
+  const a0 = (alerts[0] ?? {}) as Record<string, unknown>;
+  return {
+    alerts,
+    a0,
+    a0labels: (a0.labels ?? {}) as Record<string, unknown>,
+    a0annot: (a0.annotations ?? {}) as Record<string, unknown>,
+    cLabels: (raw.commonLabels ?? {}) as Record<string, unknown>,
+    cAnnot: (raw.commonAnnotations ?? {}) as Record<string, unknown>,
+    gLabels: (raw.groupLabels ?? {}) as Record<string, unknown>,
+    pd: (((raw.event ?? {}) as Record<string, unknown>).data ?? {}) as Record<string, unknown>,
+  };
+}
+
+export function extractFields(raw: Record<string, unknown>): {
+  text?: string;
+  alertName?: string;
+  source?: string;
+  severity?: string;
+  fingerprint?: string;
+} {
+  const p = nestedParts(raw);
+  return {
+    text: firstStr(raw.text, raw.message, raw.title, p.cAnnot.summary, p.cAnnot.description, p.a0annot.summary, p.a0annot.description, p.pd.title, p.pd.summary, raw.alert_name, raw.alertname),
+    alertName: firstStr(raw.alert_name, raw.alertname, raw.title, p.cLabels.alertname, p.gLabels.alertname, p.a0labels.alertname, p.pd.title),
+    source: firstStr(raw.alert_source, raw.source) ?? (p.alerts.length > 0 || raw.commonLabels ? "alertmanager" : raw.event ? "pagerduty" : undefined),
+    severity: firstStr(raw.severity, p.cLabels.severity, p.a0labels.severity, p.pd.urgency, p.pd.severity),
+    fingerprint: firstStr(raw.dedup_key, raw.fingerprint, raw.aggregation_key, raw.alert_id, p.a0.fingerprint, p.pd.id),
+  };
+}
+
 /**
  * Permissive wire envelope. Only `text` OR one of the common title/message fields is truly
  * required — we coalesce them in `normalizeAlert`. Everything else is optional and, crucially,
@@ -40,8 +94,10 @@ export const IncomingAlertSchema = z
     alert_id: z.string().optional(),
   })
   .passthrough()
-  .refine((a) => Boolean(a.text ?? a.message ?? a.title ?? a.alert_name ?? a.alertname), {
-    message: "alert must carry at least one of: text, message, title, alert_name",
+  .refine((a) => Boolean(extractFields(a as Record<string, unknown>).text), {
+    message:
+      "alert must carry identifying text (text/message/title/alert_name, or nested " +
+      "Alertmanager commonAnnotations / PagerDuty event.data)",
   });
 
 export type IncomingAlert = z.infer<typeof IncomingAlertSchema>;
@@ -70,13 +126,14 @@ function coerceSeverity(v: string | undefined): Severity {
   return "warning"; // unknown → treat as actionable, never silently drop to info
 }
 
-/** Collapse the vendor dialects into one shape. Pure and deterministic — safe to unit-test. */
+/** Collapse the vendor dialects (flat and nested) into one shape. Pure and deterministic. */
 export function normalizeAlert(input: IncomingAlert): NormalizedAlert {
-  const text = (input.text ?? input.message ?? input.title ?? input.alert_name ?? input.alertname ?? "").trim();
-  const alertName = (input.alert_name ?? input.alertname ?? input.title ?? text.slice(0, 80)).trim();
-  const source = (input.alert_source ?? input.source ?? "generic").toLowerCase().trim();
-  const severity = coerceSeverity(input.severity);
-  const receivedAt = input.received_at ?? new Date().toISOString();
+  const f = extractFields(input as Record<string, unknown>);
+  const text = f.text ?? "";
+  const alertName = f.alertName ?? text.slice(0, 80);
+  const source = (f.source ?? "generic").toLowerCase();
+  const severity = coerceSeverity(f.severity);
+  const receivedAt = str(input.received_at) ?? new Date().toISOString();
 
   return {
     dedupKey: computeDedupKey(input, { text, alertName, source }),
@@ -98,7 +155,8 @@ export function computeDedupKey(
   input: IncomingAlert,
   parts: { text: string; alertName: string; source: string },
 ): string {
-  const explicit = input.dedup_key ?? input.fingerprint ?? input.aggregation_key ?? input.alert_id;
+  // Reaches nested vendor fingerprints too (Alertmanager `alerts[0].fingerprint`, PagerDuty id).
+  const explicit = extractFields(input as Record<string, unknown>).fingerprint;
   // `:` is reserved in the queue's job-id keyspace (BullMQ), so it must never appear in a key.
   const clean = (s: string) => s.replace(/:/g, "_");
   if (explicit) return `${clean(parts.source)}-${clean(explicit)}`;

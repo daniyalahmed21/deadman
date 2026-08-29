@@ -17,8 +17,17 @@ import type { InvestigationResult } from "./fixtures.js";
 import { recordInvestigation, recordUsage } from "./cost.js";
 
 const MODEL = process.env.DEADMAN_LLM_MODEL ?? "claude-opus-4-8";
-const MAX_RETRIES = Number(process.env.DEADMAN_LLM_RETRIES ?? 3);
-const RETRY_BASE_MS = Number(process.env.DEADMAN_LLM_RETRY_BASE_MS ?? 500);
+
+/** Parse a non-negative integer env var, falling back to `def` on missing/NaN/negative input.
+ *  A bare `Number(process.env...)` yields NaN for garbage, and `attempt >= NaN` is always false,
+ *  which would turn the retry loop into an infinite loop. */
+function intEnv(name: string, def: number): number {
+  const n = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(n) && n >= 0 ? n : def;
+}
+
+const MAX_RETRIES = intEnv("DEADMAN_LLM_RETRIES", 3);
+const RETRY_BASE_MS = intEnv("DEADMAN_LLM_RETRY_BASE_MS", 500);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -26,6 +35,20 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function isRetryable(err: unknown): boolean {
   const status = (err as { status?: number } | undefined)?.status;
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 529;
+}
+
+/** Seconds from a `retry-after` header, whether the SDK exposes headers as a `Headers` object
+ *  (`.get()`) or a plain record. Returns null when absent or unparseable. */
+function retryAfterSeconds(err: unknown): number | null {
+  const headers = (err as { headers?: unknown } | undefined)?.headers;
+  let raw: string | null | undefined;
+  if (headers && typeof (headers as Headers).get === "function") {
+    raw = (headers as Headers).get("retry-after");
+  } else if (headers && typeof headers === "object") {
+    raw = (headers as Record<string, string>)["retry-after"];
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /**
@@ -39,9 +62,9 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (err) {
       if (!isRetryable(err) || attempt >= MAX_RETRIES) throw err;
-      const hinted = Number((err as { headers?: Record<string, string> } | undefined)?.headers?.["retry-after"]);
+      const hinted = retryAfterSeconds(err);
       const backoff = RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * RETRY_BASE_MS);
-      const delay = Number.isFinite(hinted) && hinted > 0 ? hinted * 1000 : backoff;
+      const delay = hinted !== null ? hinted * 1000 : backoff;
       await sleep(delay);
     }
   }
