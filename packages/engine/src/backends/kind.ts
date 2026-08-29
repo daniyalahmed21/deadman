@@ -1,9 +1,14 @@
 /**
- * Real kubectl backend against a local `kind` cluster.
+ * Real kubectl backend — a local `kind` cluster for the demo, or ANY real cluster in production.
  *
- * Enabled with DEADMAN_CLUSTER=kind. Provisions/reseeds from ../k8s/seed.yaml. Health is
- * keyed on the root cause - the memory limit - so `verify_resolution` reflects the actual
- * fix (limit raised to >=512Mi) rather than racing the OOMKill/restart timing.
+ * Enabled with DEADMAN_CLUSTER=kind. Every call shells out to `kubectl`, so it drives whatever
+ * cluster the resolved context points at:
+ *   - local demo: KIND_CONTEXT (default `kind-deadman`), seeded from ../k8s/seed.yaml.
+ *   - production: set KUBE_CONTEXT to an EKS/GKE/AKS context from your kubeconfig (or the literal
+ *     "current" to use kubectl's current-context), KUBE_NAMESPACE to the target namespace, and a
+ *     kubeconfig scoped to the least-privilege ServiceAccount in ../k8s/rbac.yaml.
+ * Health is keyed on the root cause - the memory limit - so `verify_resolution` reflects the
+ * actual fix (limit raised to >=512Mi) rather than racing the OOMKill/restart timing.
  */
 
 import { execFileSync } from "node:child_process";
@@ -13,8 +18,12 @@ import { buildInvestigation } from "../investigate.js";
 import type { InvestigationResult } from "../fixtures.js";
 import type { ChangeEvent, RehearsalResult } from "@deadman/shared";
 
-const CTX = process.env.KIND_CONTEXT ?? "kind-deadman";
-const NS = process.env.KIND_NAMESPACE ?? "prod";
+// Context resolution: KUBE_CONTEXT points DEADMAN at any real cluster (a cloud context from your
+// kubeconfig); the literal "current" uses kubectl's current-context (omits the --context flag).
+// KIND_CONTEXT keeps the local-demo default working unchanged.
+const CONTEXT = process.env.KUBE_CONTEXT ?? process.env.KIND_CONTEXT ?? "kind-deadman";
+const CTX_FLAG = CONTEXT && CONTEXT !== "current" ? ["--context", CONTEXT] : [];
+const NS = process.env.KUBE_NAMESPACE ?? process.env.KIND_NAMESPACE ?? "prod";
 const SEED = fileURLToPath(new URL("../../k8s/seed.yaml", import.meta.url));
 /** A resolved deployment has a memory limit at or above this (Mi). */
 const HEALTHY_MEM_MIB = 512;
@@ -23,7 +32,7 @@ const HEALTHY_MEM_MIB = 512;
  *  `input` pipes a manifest on stdin (for `diff` / `apply -f -`). */
 function exec(args: string[], input?: string): { code: number; out: string; err: string } {
   try {
-    const out = execFileSync("kubectl", ["--context", CTX, ...args], { encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"] });
+    const out = execFileSync("kubectl", [...CTX_FLAG, ...args], { encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"] });
     return { code: 0, out: out.trim(), err: "" };
   } catch (e) {
     const x = e as { status?: number; stdout?: string; stderr?: string };
@@ -169,6 +178,17 @@ export const kindBackend: ClusterBackend = {
   mode: "kind",
 
   reset() {
+    // Seeding applies the demo workload (the checkout OOM scenario). Refuse to run it against
+    // anything that isn't obviously a local kind cluster unless explicitly forced — DEADMAN must
+    // never deploy demo fixtures into a real production cluster.
+    const isKindCtx = CONTEXT.startsWith("kind-");
+    const forced = (process.env.DEADMAN_ALLOW_SEED ?? "").toLowerCase() === "1";
+    if (!isKindCtx && !forced) {
+      throw new Error(
+        `refusing to seed the demo workload into non-kind context "${CONTEXT}" ` +
+          `(set DEADMAN_ALLOW_SEED=1 only if you really mean to)`,
+      );
+    }
     run(["apply", "-f", SEED]);
   },
 

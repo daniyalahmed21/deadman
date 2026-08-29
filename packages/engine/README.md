@@ -127,6 +127,27 @@ The failing scenario ([`k8s/seed.yaml`](k8s/seed.yaml)): a `checkout` deployment
 at a 256Mi limit; `bump_memory` to 512Mi or more resolves it. `data-0` is a healthy PVC that is
 **not** implicated (the wrong, irreversible fix the agent should decline).
 
+### Connect a real cluster (production)
+
+The `kind` backend is just real `kubectl` — point it at any EKS/GKE/AKS cluster from your
+kubeconfig. No code change; it drives whatever the resolved context targets.
+
+```sh
+kubectl apply -f k8s/rbac.yaml     # least-privilege ServiceAccount + Role (see the file header)
+DEADMAN_CLUSTER=kind \
+  KUBE_CONTEXT=<your-context> \    # or "current" to use kubectl's current-context
+  KUBE_NAMESPACE=<your-namespace> \
+  pnpm start
+```
+
+- **Least privilege:** [`k8s/rbac.yaml`](k8s/rbac.yaml) grants exactly the verbs DEADMAN uses —
+  read telemetry + the specific gated remediations, no cluster-admin. Node ops and the rehearsal
+  sandbox need the optional (elevated) `ClusterRole` in that file; omit it to stay namespace-bound.
+- **Safety:** `reset()` (which applies the demo workload) refuses to run against any non-`kind-*`
+  context unless `DEADMAN_ALLOW_SEED=1`, so DEADMAN can never seed demo fixtures into prod.
+- `KUBE_CONTEXT`/`KUBE_NAMESPACE` are the production knobs; `KIND_CONTEXT`/`KIND_NAMESPACE` remain
+  as the local-demo defaults (`kind-deadman` / `prod`).
+
 ## HTTP endpoints
 
 `POST /mcp` is the MCP transport (stateful streamable-HTTP with per-session transports; `GET`
@@ -135,16 +156,70 @@ read model:
 
 - `GET /dashboard` a self-contained HTML dashboard, plus `/dashboard/state`, `/incidents`,
   `/cost`, `/policy` (JSON) and `/dashboard/stream` (the live SSE event feed).
-- `GET /healthz` backend, demo, and narration status.
+- `POST /alerts` durable alert ingestion (opt-in), plus `GET /alerts/health` (queue depth +
+  dead-letter count). See [Alert ingestion](#alert-ingestion-production).
+- `GET /healthz` (liveness: process up) and `GET /readyz` (readiness: the cluster backend is
+  reachable, and Redis too when ingestion is on — 503 when a dependency is down).
+- `GET /metrics` Prometheus metrics: safety outcomes (executed vs refused), incident throughput,
+  and, when ingestion is on, alert queue depth and dead-letter count.
 - Demo-only (refused unless `DEADMAN_DEMO_MODE`): `POST /dashboard/chaos`, `/demo-run`,
   `/demo-badfix`, `/demo-injection`, and `GET /dashboard/seed-demo`. These drive the scripted
   scenarios and can never erase a live audit trail.
+
+## Alert ingestion (production)
+
+How a real company connects DEADMAN to their monitoring. Off by default (`DEADMAN_ALERTS=1`);
+when off, the engine is a pure MCP server exactly as before.
+
+A monitor (Datadog, Prometheus Alertmanager, Grafana, PagerDuty, or a plain `curl`) POSTs an
+alert to **`POST /alerts`**. The webhook validates and normalises it, then persists it to a
+**durable BullMQ/Redis queue** and returns `202` immediately — so an alert storm or a slow
+TrueForge can never block the caller or drop an incident. A background worker then turns each
+alert into a **TrueForge session**, so the agent investigates and remediates through the *same*
+approval gate a human uses. Ingestion is deliberately decoupled from processing:
+
+```
+monitor ──POST /alerts──▶ validate + normalise ──▶ BullMQ/Redis queue ──202
+                                                          │ (worker, at-least-once)
+                                                          ▼
+                                        open TrueForge session + post the alert as turn 1
+                                                          ▼
+                                        investigate ▶ propose ▶ APPROVAL GATE ▶ remediate
+```
+
+Production properties (why this is not an in-memory queue): **durable** (survives restart via
+Redis AOF), **at-least-once** (a job isn't removed until the worker acks), **idempotent** (a
+monitor re-firing the same condition dedups on `jobId` — one incident, not fifty), **retried**
+with exponential backoff, and **dead-lettered** (parked in Redis' `failed` set after N attempts,
+never lost or looped forever). `AlertQueue` ([`alerts/queue.ts`](src/alerts/queue.ts)) is a
+narrow interface, so SQS / Kafka / pg-boss can replace Redis without touching the webhook or the
+bridge — the same seam the cluster backends use.
+
+```sh
+docker compose -f docker-compose.redis.yml up -d   # Redis for the queue
+DEADMAN_ALERTS=1 pnpm start                         # enable ingestion
+
+# fire a Datadog-shaped alert (loopback is trusted; remote callers need the bearer token)
+curl -X POST http://localhost:9000/alerts -H 'Content-Type: application/json' \
+  -d '{"alert_name":"checkout OOMKilled","alert_source":"datadog","severity":"critical","text":"checkout-api pods OOMKilling at 256Mi"}'
+# -> 202 {"queued":true,"duplicate":false,"dedup_key":"datadog:...","queue_depth":1}
+```
+
+`GET /alerts/health` reports queue depth and the dead-letter count. Auth: loopback callers are
+trusted; any remote caller must present `Authorization: Bearer $DEADMAN_ALERT_TOKEN` (without a
+token set, remote calls are refused and ingestion is loopback-only).
 
 ## Configuration
 
 | Env | Effect |
 |---|---|
 | `DEADMAN_DEMO_MODE` | Forces sim + deterministic + OOM scenario, seeds the cockpit. One flag for an identical run every take. |
+| `DEADMAN_ALERTS` | Enable `POST /alerts` ingestion (needs Redis). Off ⇒ pure MCP server. |
+| `REDIS_URL` | Redis connection for the queue (default `redis://127.0.0.1:6379`). |
+| `DEADMAN_ALERT_TOKEN` | Bearer token required for non-loopback `POST /alerts` callers. |
+| `TRUEFORGE_URL` | TrueForge base URL the worker opens sessions against (default `http://localhost:8790`). |
+| `DEADMAN_AGENT` | Agent name the worker drives (default `deadman`). |
+| `DEADMAN_ALERT_ATTEMPTS` / `_BACKOFF_MS` / `_DEDUP_WINDOW_SEC` / `_CONCURRENCY` | Queue retry, backoff, dedup window, and worker concurrency tuning. |
 | `DEADMAN_CLUSTER=kind` | Use the real kind backend instead of the sim. |
 | `ANTHROPIC_API_KEY` | Enables LLM narration (in `.env`). |
 | `DEADMAN_LLM_NARRATION=off` | Force deterministic prose. |
@@ -154,7 +229,8 @@ read model:
 
 ## Tests
 
-`pnpm test` runs the vitest suite (68 tests across 14 files): the safety floor and frozen
+`pnpm test` runs the vitest suite (91 tests across 17 files): the safety floor and frozen
 policy, prompt-injection refusals (`adversarial`), the watchdog, change-correlation, recall,
-rehearsal, preview, triage, investigation, postmortem, and the sim cluster. The output
-contracts do not change when a backend or narration is swapped, only the tool bodies.
+rehearsal, preview, triage, investigation, postmortem, the sim cluster, and alert
+normalisation + dedup (`alerts`). The output contracts do not change when a backend or narration
+is swapped, only the tool bodies.

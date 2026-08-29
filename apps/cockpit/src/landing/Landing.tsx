@@ -141,10 +141,10 @@ export function Landing() {
         <div className="sechead">
           <span className="eyebrow"><span className="ch">03</span>Why it's safe</span>
           <h2>Safe because TrueForge gates it</h2>
-          <p>An alert enters the harness. It calls the DEADMAN engine over MCP. Reads are free. Writes pass a blast-radius approval gate. Every step streams to the cockpit.</p>
+          <p>A monitor fires an alert into DEADMAN's durable queue. A worker opens a TrueForge session, which calls the engine over MCP. Reads are free. Writes pass a blast-radius approval gate. Every step streams to the cockpit.</p>
         </div>
         <div className="arch">
-          <img src="/architecture.svg" alt="DEADMAN architecture: alert to TrueForge to the DEADMAN engine to the cluster with a cockpit and audit log" />
+          <img src="/architecture.svg" alt="DEADMAN architecture: a monitor alert enters DEADMAN's /alerts webhook and durable BullMQ/Redis queue, a worker opens a TrueForge session that drives the DEADMAN engine on the cluster, with a cockpit and audit log" />
         </div>
       </section>
 

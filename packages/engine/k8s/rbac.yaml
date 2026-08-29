@@ -1,0 +1,92 @@
+# Least-privilege RBAC for connecting DEADMAN to a REAL cluster.
+#
+# DEADMAN drives the cluster only through the verbs its tools actually use — read telemetry, and
+# the specific remediations behind the approval gate. Give it exactly this, no cluster-admin.
+#
+#   kubectl apply -f rbac.yaml
+#   # then point a kubeconfig at this ServiceAccount and run:
+#   DEADMAN_CLUSTER=kind KUBE_CONTEXT=<your-context> KUBE_NAMESPACE=prod pnpm start
+#
+# The namespaced Role below is enough for investigate + the in-namespace remediations
+# (restart / bump_memory / rollback / scale / delete_pvc). The ClusterRole at the bottom is
+# OPTIONAL and elevated — apply it only if you want node operations (cordon/drain) and the
+# rehearsal sandbox (which creates an ephemeral namespace). Omit it to keep DEADMAN namespace-bound.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deadman
+  namespace: prod
+---
+# Namespaced permissions — read evidence, and mutate only the workloads it remediates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deadman-sre
+  namespace: prod
+rules:
+  # --- read: investigation evidence ---
+  - apiGroups: [""]
+    resources: [pods, pods/log, events, resourcequotas, persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: ["apps"]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: [pods]
+    verbs: [get, list] # kubectl top (working-set memory)
+  # --- write: the gated remediations (restart / bump_memory / rollback / scale) ---
+  - apiGroups: ["apps"]
+    resources: [deployments, deployments/scale]
+    verbs: [get, patch, update]
+  # --- write: delete_pvc (irreversible; still gated at the approval layer) ---
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deadman-sre
+  namespace: prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: deadman-sre
+subjects:
+  - kind: ServiceAccount
+    name: deadman
+    namespace: prod
+---
+# OPTIONAL / ELEVATED — node operations + the rehearsal sandbox. Apply only if you need them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: deadman-cluster
+rules:
+  # cordon_node / drain_node
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list] # drain enumerates pods across namespaces
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create] # drain evicts
+  # rehearse_remediation forks the workload into a throwaway namespace, then deletes it
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [create, delete, get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: deadman-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: deadman-cluster
+subjects:
+  - kind: ServiceAccount
+    name: deadman
+    namespace: prod
