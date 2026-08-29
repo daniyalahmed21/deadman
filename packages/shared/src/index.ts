@@ -85,6 +85,18 @@ export interface PodMetric {
   cpuMillis: number;
 }
 
+/** A past incident recalled as similar to the current one, with the fix that resolved it. */
+export interface RecallMatch {
+  id: string;
+  service: string;
+  signal?: string;
+  rootCause: string;
+  fix: string[];
+  score: number;
+  strength: "strong" | "likely" | "weak";
+  agoDays: number;
+}
+
 /** A structured field-level change, for the approval-gate diff. */
 export interface FieldChange {
   path: string;

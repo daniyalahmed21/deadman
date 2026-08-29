@@ -29,6 +29,11 @@ import { armWatchdog } from "./watchdog.js";
 import { correlateChange, symptomOf } from "./correlate.js";
 import { rehearse } from "./rehearse.js";
 import { previewRemediation } from "./preview.js";
+import { recallSimilar, type AlertSketch } from "./recall.js";
+import { allMemories, rememberIncident } from "./memory.js";
+
+/** Map a coarse symptom to the k8s signal label used in incident memory. */
+const SIGNAL_LABEL: Record<string, string> = { oom: "OOMKilled", imagepull: "ImagePullBackOff", crashloop: "CrashLoopBackOff" };
 
 const WATCHDOG_WINDOW_MS = Number(process.env.DEADMAN_WATCHDOG_WINDOW_MS ?? 4000);
 const WATCHDOG_INTERVAL_MS = Number(process.env.DEADMAN_WATCHDOG_INTERVAL_MS ?? 1000);
@@ -215,8 +220,22 @@ export function registerDeadmanTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     async ({ root_cause }) => {
-      void root_cause;
+      // Recall a proven fix from memory: has a similar incident happened before?
+      const svc = incident.getInvestigation()?.deployment ?? "checkout";
+      const symptom = symptomOf(root_cause);
+      const alert: AlertSketch = { service: svc, signal: SIGNAL_LABEL[symptom], text: root_cause };
+      const recall = recallSimilar(alert, allMemories());
+      if (recall) {
+        emit({
+          kind: "signal",
+          phase: "remediate",
+          target: svc,
+          severity: "info",
+          message: `Recall: ${recall.strength} match to ${recall.id} (${recall.agoDays}d ago) - previously resolved by ${recall.fix.join(", ")}`,
+        });
+      }
       return json({
+        recall,
         actions: [
           {
             tool: "restart_pod",
@@ -299,6 +318,23 @@ export function registerDeadmanTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "recall_similar",
+    {
+      title: "Recall similar past incident",
+      description:
+        "Search incident memory for a past incident similar to this alert and return the fix that " +
+        "resolved it, with a similarity score. A suggestion from memory, not a decision. Read-only.",
+      inputSchema: {
+        service: z.string().describe("Affected service"),
+        signal: z.string().optional().describe("Failure mode, e.g. OOMKilled / CrashLoopBackOff"),
+        alert: z.string().describe("Alert text / root cause"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service, signal, alert }) => json({ match: recallSimilar({ service, signal, text: alert }, allMemories()) }),
+  );
+
+  server.registerTool(
     "rehearse_remediation",
     {
       title: "Rehearse remediation in a sandbox",
@@ -342,7 +378,19 @@ export function registerDeadmanTools(server: McpServer): void {
     },
     async ({ target }) => {
       const health = backend.serviceHealth(target);
-      incidents.closeIncident(target, health.healthy, audit.all(), health.memLimitMib);
+      const closed = incidents.closeIncident(target, health.healthy, audit.all(), health.memLimitMib);
+      // On resolution, commit the incident + its winning fix to memory so recall gets smarter.
+      if (health.healthy && closed) {
+        const fix = [...new Set(closed.timeline.filter((e) => !e.isError).map((e) => e.action))];
+        rememberIncident({
+          id: closed.id,
+          service: closed.service,
+          signal: SIGNAL_LABEL[symptomOf(closed.rootCause ?? "")],
+          rootCause: closed.rootCause ?? "",
+          fix,
+          at: Date.now(),
+        });
+      }
       emit({
         kind: health.healthy ? "resolved" : "verify",
         phase: "verify",
