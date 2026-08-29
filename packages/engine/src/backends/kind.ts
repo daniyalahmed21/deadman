@@ -37,6 +37,31 @@ function nsTry(args: string[]): { ok: boolean; out: string } {
   }
 }
 
+/** Namespaced kubectl that pipes a manifest on stdin (for `diff` / `apply -f -`). */
+function nsStdin(args: string[], stdin: string): { code: number; out: string; err: string } {
+  try {
+    const out = execFileSync("kubectl", ["--context", CTX, "-n", NS, ...args], {
+      encoding: "utf8",
+      input: stdin,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { code: 0, out: out.trim(), err: "" };
+  } catch (e) {
+    const x = e as { status?: number; stdout?: string; stderr?: string };
+    return { code: x.status ?? 1, out: String(x.stdout ?? "").trim(), err: String(x.stderr ?? "").trim() };
+  }
+}
+
+/** Trim `kubectl diff` output to the meaningful hunks: drop temp-path headers and metadata noise. */
+function cleanDiff(out: string): string {
+  return out
+    .split("\n")
+    .filter((l) => !/^(diff -|--- |\+\+\+ )/.test(l))
+    .filter((l) => !/last-applied-configuration|generation:|creationTimestamp:|"apiVersion"/.test(l))
+    .join("\n")
+    .trim();
+}
+
 /** Cluster-scoped (no namespace) kubectl, for node operations. */
 function runTry(args: string[]): { ok: boolean; out: string } {
   try {
@@ -158,6 +183,64 @@ export const kindBackend: ClusterBackend = {
     const r = nsTry(["logs", "-l", `app=${deployment}`, `--tail=${lines}`, "--all-containers=true"]);
     return r.ok ? r.out.split("\n").filter(Boolean) : [`(no logs: ${r.out})`];
   },
+  previousLogs(deployment, lines) {
+    // --previous: the container that DIED. Empty/erroring when the pod has never restarted.
+    const r = nsTry(["logs", "-l", `app=${deployment}`, "--previous", `--tail=${lines}`, "--all-containers=true"]);
+    return r.ok && r.out ? r.out.split("\n").filter(Boolean) : [`(no previous container logs: ${r.out || "pod has not restarted"})`];
+  },
+  describePod(deployment) {
+    const r = nsTry(["describe", "pod", "-l", `app=${deployment}`]);
+    return r.ok ? r.out : `(describe failed: ${r.out})`;
+  },
+  previewChange(deployment, mutate) {
+    const live = nsTry(["get", "deploy", deployment, "-o", "json"]);
+    if (!live.ok) return { rawDiff: "", warnings: [`preview unavailable: ${live.out}`] };
+    let obj: any;
+    try {
+      obj = JSON.parse(live.out);
+    } catch {
+      return { rawDiff: "", warnings: ["preview unavailable: could not parse live object"] };
+    }
+    delete obj.status;
+    if (obj.metadata) delete obj.metadata.managedFields;
+    mutate(obj);
+    const manifest = JSON.stringify(obj);
+
+    // Real field diff: exit 1 means "differences found" (not an error); >1 is a real failure.
+    const d = nsStdin(["diff", "-f", "-"], manifest);
+    const rawDiff = d.code <= 1 ? cleanDiff(d.out) : "";
+
+    // Real validity check: full admission chain (quota, limitrange, webhooks) without persisting.
+    const warnings: string[] = [];
+    const v = nsStdin(["apply", "--dry-run=server", "-f", "-"], manifest);
+    if (v.code !== 0) {
+      warnings.push(`This change would be REJECTED: ${(v.err || v.out).split("\n")[0] || "admission denied"}`);
+    } else {
+      for (const line of `${v.err}\n${v.out}`.split("\n")) {
+        const t = line.trim();
+        if (/^Warning:/i.test(t)) warnings.push(t);
+      }
+    }
+    return { rawDiff, warnings };
+  },
+  namespaceMemoryQuota() {
+    const r = nsTry(["get", "resourcequota", "-o", "json"]);
+    if (!r.ok) return null;
+    let items: any[] = [];
+    try {
+      items = JSON.parse(r.out).items ?? [];
+    } catch {
+      return null;
+    }
+    for (const q of items) {
+      const hard = q.status?.hard?.["limits.memory"] ?? q.spec?.hard?.["limits.memory"];
+      if (hard) {
+        const used = q.status?.used?.["limits.memory"] ?? "0";
+        return { hardMib: parseMemMib(String(hard)), usedMib: parseMemMib(String(used)) };
+      }
+    }
+    return null;
+  },
   events(deployment) {
     const r = nsTry([
       "get",
@@ -194,6 +277,8 @@ export const kindBackend: ClusterBackend = {
           at: Date.parse(rs.metadata?.creationTimestamp ?? "") || Date.now(),
           image: (c.image as string | undefined) ?? "",
           mem: parseMemMib((c.resources?.limits?.memory as string | undefined) ?? ""),
+          // The human "why", if someone recorded it (kubectl annotate kubernetes.io/change-cause=...).
+          cause: (rs.metadata?.annotations?.["kubernetes.io/change-cause"] as string | undefined) ?? "",
         };
       })
       .filter((rs) => rs.revision > 0)
@@ -201,13 +286,14 @@ export const kindBackend: ClusterBackend = {
 
     return rss.map((rs, i): ChangeEvent => {
       const prev = rss[i - 1];
+      const why = rs.cause ? ` (${rs.cause})` : "";
       if (prev && rs.image && rs.image !== prev.image) {
-        return { revision: rs.revision, at: rs.at, kind: "image", summary: `image ${prev.image} -> ${rs.image}`, imageTag: rs.image };
+        return { revision: rs.revision, at: rs.at, kind: "image", summary: `image ${prev.image} -> ${rs.image}${why}`, imageTag: rs.image };
       }
       if (prev && rs.mem > 0 && prev.mem > 0 && rs.mem !== prev.mem) {
-        return { revision: rs.revision, at: rs.at, kind: "mem_limit", summary: `mem limit ${prev.mem}Mi -> ${rs.mem}Mi`, memLimitMib: rs.mem, previousMemLimitMib: prev.mem };
+        return { revision: rs.revision, at: rs.at, kind: "mem_limit", summary: `mem limit ${prev.mem}Mi -> ${rs.mem}Mi${why}`, memLimitMib: rs.mem, previousMemLimitMib: prev.mem };
       }
-      return { revision: rs.revision, at: rs.at, kind: "deploy", summary: `rollout revision ${rs.revision}` };
+      return { revision: rs.revision, at: rs.at, kind: "deploy", summary: `rollout revision ${rs.revision}${why}` };
     });
   },
 

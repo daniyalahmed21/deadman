@@ -35,6 +35,12 @@ export interface Metrics {
   pods: PodMetric[];
 }
 
+/** A real change preview: the field diff and any admission warnings from a server dry-run. */
+export interface PreviewProbe {
+  rawDiff: string;
+  warnings: string[];
+}
+
 export interface ClusterBackend {
   readonly mode: "sim" | "kind";
   reset(): void;
@@ -42,6 +48,10 @@ export interface ClusterBackend {
   serviceHealth(deployment: string): HealthSnapshot;
   metrics(deployment: string): Metrics;
   logs(deployment: string, lines: number): string[];
+  /** Logs from the PREVIOUS (crashed) container - where a CrashLoop/OOMKill death signal lives. */
+  previousLogs(deployment: string, lines: number): string[];
+  /** `kubectl describe pod`-style summary: status, restarts, last-state/exit, conditions, events. */
+  describePod(deployment: string): string;
   events(deployment: string): string[];
   deployHistory(deployment: string): string[];
   /** Structured recent-change history, for change-correlation. */
@@ -59,6 +69,18 @@ export interface ClusterBackend {
   drainNode(node: string): string;
   /** Number of schedulable (Ready) nodes - used to refuse draining the last one. */
   nodeCount(): number;
+  /**
+   * Real change preview: apply `mutate` to a copy of the live object, then run `kubectl diff`
+   * and `kubectl apply --dry-run=server` to get a real diff and real admission warnings. Optional:
+   * only the kind backend implements it; the sim has no cluster to dry-run against.
+   */
+  previewChange?(deployment: string, mutate: (obj: any) => void): PreviewProbe;
+  /**
+   * The namespace's `limits.memory` ResourceQuota (hard cap and current use, in MiB), or null if
+   * none. Pod-level quota is not caught by a Deployment dry-run, so a memory bump checks headroom
+   * against this directly. Optional: kind only.
+   */
+  namespaceMemoryQuota?(): { hardMib: number; usedMib: number } | null;
 }
 
 const simBackend: ClusterBackend = {
@@ -77,6 +99,8 @@ const simBackend: ClusterBackend = {
   serviceHealth: (d) => sim.snapshotHealth(d),
   metrics: (d) => sim.podMetricsSim(d),
   logs: (d, n) => sim.podLogsSim(d, n),
+  previousLogs: (d, n) => sim.podPreviousLogsSim(d, n),
+  describePod: (d) => sim.describePodSim(d),
   events: (d) => sim.clusterEventsSim(d),
   deployHistory: (d) => sim.deployHistorySim(d),
   changeHistory: (d) => sim.changeHistorySim(d),

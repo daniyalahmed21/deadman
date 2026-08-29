@@ -19,6 +19,16 @@ function severity(b: Pick<BlastRadius, "stateful" | "reversible" | "disruption" 
   return "low";
 }
 
+/**
+ * On a real cluster, replace the templated diff and warnings with a REAL server dry-run + kubectl
+ * diff. On the sim (no `previewChange`), the templated preview is returned unchanged.
+ */
+function withRealPreview(result: RemediationPreview, deployment: string, mutate: (obj: any) => void): RemediationPreview {
+  const probe = backend.previewChange?.(deployment, mutate);
+  if (!probe) return result;
+  return { ...result, rawDiff: probe.rawDiff || result.rawDiff, warnings: [...result.warnings, ...probe.warnings] };
+}
+
 export function previewRemediation(action: string, target: string, args: { mib?: number; replicas?: number } = {}): RemediationPreview {
   const tier = classifyTool(action);
   const replicas = backend.deploymentReplicas(target) ?? 0;
@@ -30,15 +40,36 @@ export function previewRemediation(action: string, target: string, args: { mib?:
       const after = args.mib ?? before;
       const blast: BlastRadius = { podsAffected: replicas, disruption: "rolling", stateful: false, reversible: true, severity: "low" };
       blast.severity = severity(blast);
-      return {
-        ...base,
-        summary: `Raise ${target} memory limit ${before}Mi -> ${after}Mi (rolling restart, ${replicas} pods)`,
-        changes: [{ path: "spec.template.spec.containers[0].resources.limits.memory", before: `${before}Mi`, after: `${after}Mi` }],
-        rawDiff: `  containers:\n-     memory: ${before}Mi\n+     memory: ${after}Mi`,
-        blastRadius: blast,
-        rollback: { method: "re-apply previous limit", inverse: `bump_memory ${target} ${before}`, beforeState: { memory: `${before}Mi` }, note: "reversible prod config change" },
-        destructive: true,
-      };
+      let result = withRealPreview(
+        {
+          ...base,
+          summary: `Raise ${target} memory limit ${before}Mi -> ${after}Mi (rolling restart, ${replicas} pods)`,
+          changes: [{ path: "spec.template.spec.containers[0].resources.limits.memory", before: `${before}Mi`, after: `${after}Mi` }],
+          rawDiff: `  containers:\n-     memory: ${before}Mi\n+     memory: ${after}Mi`,
+          blastRadius: blast,
+          rollback: { method: "re-apply previous limit", inverse: `bump_memory ${target} ${before}`, beforeState: { memory: `${before}Mi` }, note: "reversible prod config change" },
+          destructive: true,
+        },
+        target,
+        (o) => {
+          o.spec.template.spec.containers[0].resources.limits.memory = `${after}Mi`;
+        },
+      );
+      // A Deployment dry-run does NOT trigger pod-level ResourceQuota; check headroom directly.
+      const q = backend.namespaceMemoryQuota?.();
+      if (q && after > before) {
+        const projected = q.usedMib + (after - before) * replicas;
+        if (projected > q.hardMib) {
+          result = {
+            ...result,
+            warnings: [
+              ...result.warnings,
+              `Exceeds namespace memory quota: this bump projects ${projected}Mi against a ${q.hardMib}Mi cap (${q.usedMib}Mi used now).`,
+            ],
+          };
+        }
+      }
+      return result;
     }
     case "delete_pvc": {
       const blast: BlastRadius = { podsAffected: 0, disruption: "none", stateful: true, reversible: false, severity: "high" };
@@ -85,16 +116,22 @@ export function previewRemediation(action: string, target: string, args: { mib?:
       const down = to < replicas;
       const blast: BlastRadius = { podsAffected: Math.abs(to - replicas), disruption: to === 0 ? "downtime" : "rolling", stateful: false, reversible: true, severity: "low" };
       blast.severity = severity(blast);
-      return {
-        ...base,
-        summary: `Scale ${target} ${replicas} -> ${to} replicas`,
-        changes: [{ path: "spec.replicas", before: replicas, after: to }],
-        rawDiff: `-   replicas: ${replicas}\n+   replicas: ${to}`,
-        blastRadius: blast,
-        rollback: { method: "scale back", inverse: `scale_deployment ${target} ${replicas}`, beforeState: { replicas }, note: down ? "scaling down reduces capacity" : "reversible" },
-        warnings: to === 0 ? ["Scales to zero - the service goes DOWN."] : [],
-        destructive: true,
-      };
+      return withRealPreview(
+        {
+          ...base,
+          summary: `Scale ${target} ${replicas} -> ${to} replicas`,
+          changes: [{ path: "spec.replicas", before: replicas, after: to }],
+          rawDiff: `-   replicas: ${replicas}\n+   replicas: ${to}`,
+          blastRadius: blast,
+          rollback: { method: "scale back", inverse: `scale_deployment ${target} ${replicas}`, beforeState: { replicas }, note: down ? "scaling down reduces capacity" : "reversible" },
+          warnings: to === 0 ? ["Scales to zero - the service goes DOWN."] : [],
+          destructive: true,
+        },
+        target,
+        (o) => {
+          o.spec.replicas = to;
+        },
+      );
     }
     default: {
       const blast: BlastRadius = { podsAffected: 0, disruption: "none", stateful: false, reversible: true, severity: "low" };

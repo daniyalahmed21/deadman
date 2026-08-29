@@ -189,6 +189,36 @@ export function registerDeadmanTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "get_previous_logs",
+    {
+      title: "Get previous (crashed) container logs",
+      description:
+        "Tail logs from the PREVIOUS, crashed container (kubectl logs --previous). After a restart the live " +
+        "container is fresh and often empty; the cause of a CrashLoopBackOff or OOMKill is in the instance that " +
+        "died. Use this when get_logs looks empty on a restarting pod. Read-only.",
+      inputSchema: {
+        service: z.string().optional().describe("Deployment (default: checkout)"),
+        lines: z.number().int().positive().max(200).optional().describe("Lines to tail (default 40)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service, lines }) => json({ previousLogs: backend.previousLogs(service ?? "checkout", lines ?? 40) }),
+  );
+
+  server.registerTool(
+    "describe_pod",
+    {
+      title: "Describe pod",
+      description:
+        "Full pod description (kubectl describe pod): status, restart count, last-state termination reason and " +
+        "exit code, readiness conditions, and recent events - the one-shot 'what is wrong with this pod' read. Read-only.",
+      inputSchema: { service: z.string().optional().describe("Deployment (default: checkout)") },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ service }) => text(backend.describePod(service ?? "checkout")),
+  );
+
+  server.registerTool(
     "get_events",
     {
       title: "Get events",
