@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Activity, ShieldCheck, ListTree, Coins, LogOut, Skull, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SHOWCASE } from "@/lib/showcase";
 
 export type View = "overview" | "incidents" | "safety" | "cost";
 
@@ -114,8 +115,13 @@ export function Sidebar({
         {!collapsed && (
           <div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-xs">
             <span className="text-muted-foreground">Engine</span>
-            <span className={online ? "font-medium text-success" : "font-medium text-destructive"}>
-              {online ? `live · ${backend ?? "kind"}` : "offline"}
+            <span
+              className={cn(
+                "font-medium",
+                SHOWCASE ? "text-amber-500" : online ? "text-success" : "text-destructive",
+              )}
+            >
+              {SHOWCASE ? "demo data" : online ? `live · ${backend ?? "kind"}` : "offline"}
             </span>
           </div>
         )}

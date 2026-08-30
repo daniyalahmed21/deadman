@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DashboardState, MetricSample } from "@deadman/shared";
+import { SHOWCASE, showcaseState } from "./showcase";
 
 export interface DashboardFeed {
   state: DashboardState | null;
@@ -15,6 +16,19 @@ export function useDashboard(intervalMs = 2000): DashboardFeed {
   const seriesRef = useRef<MetricSample[]>([]);
 
   useEffect(() => {
+    if (SHOWCASE) {
+      setState(showcaseState);
+      setOnline(true);
+      const base: MetricSample = {
+        ts: showcaseState.ts,
+        memLimitMib: showcaseState.health.memLimitMib,
+        workingSetMib: showcaseState.metrics.workingSetMib,
+        cpuMillis: showcaseState.metrics.cpuMillis,
+      };
+      // Spread the captured sample across the chart width so the sparkline renders (no fabricated trend).
+      setSeries(Array.from({ length: 12 }, (_, i) => ({ ...base, ts: base.ts - (11 - i) * intervalMs })));
+      return;
+    }
     let alive = true;
     const poll = async () => {
       try {

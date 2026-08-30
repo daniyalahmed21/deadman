@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AgentEvent } from "@deadman/shared";
+import { SHOWCASE, showcaseEvents } from "./showcase";
 
 /**
  * Subscribe to the engine's live agent-event stream (SSE). Replays recent history on connect,
@@ -11,6 +12,16 @@ export function useEventStream(max = 60): AgentEvent[] {
   const [events, setEvents] = useState<AgentEvent[]>([]);
 
   useEffect(() => {
+    if (SHOWCASE) {
+      // Reveal the captured events one at a time so the feed animates in like a live stream.
+      let i = 0;
+      const id = setInterval(() => {
+        i += 1;
+        setEvents(showcaseEvents.slice(Math.max(0, i - max), i));
+        if (i >= showcaseEvents.length) clearInterval(id);
+      }, 550);
+      return () => clearInterval(id);
+    }
     const es = new EventSource("/dashboard/stream");
     es.onmessage = (msg) => {
       try {
