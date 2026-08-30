@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SHOWCASE, showcasePoll } from "./showcase";
 
 export interface Poll<T> {
   data: T | null;
@@ -15,6 +16,11 @@ export function usePoll<T>(url: string, intervalMs = 3000): Poll<T> {
   const alive = useRef(true);
 
   useEffect(() => {
+    if (SHOWCASE) {
+      setData(showcasePoll<T>(url));
+      setOnline(true);
+      return;
+    }
     alive.current = true;
     const tick = async () => {
       try {

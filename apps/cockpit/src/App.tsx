@@ -6,6 +6,7 @@ import { Incidents } from "@/views/Incidents";
 import { Safety } from "@/views/Safety";
 import { Cost } from "@/views/Cost";
 import { useDashboard } from "@/lib/useDashboard";
+import { SHOWCASE } from "@/lib/showcase";
 
 const TITLES: Record<View, string> = {
   overview: "Overview",
@@ -36,6 +37,11 @@ export function App() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {SHOWCASE && (
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-400">
+            Demo data. A frozen snapshot of a real incident run. Clone the repo and run the engine for a live cluster.
+          </div>
+        )}
         {/* Mobile top bar */}
         <header className="flex items-center gap-3 border-b bg-card px-4 py-3 lg:hidden">
           <button
